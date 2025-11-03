@@ -716,97 +716,122 @@ function createLocationInputModal() {
     document.body.appendChild(modal);
 }
 
-// 臨時請假彈窗
+// 臨時請假彈窗（新版樣式與內容）
 function openTempLeaveModal(el) {
+    const now = new Date();
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const toLocalInputValue = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+    // 預設開始/結束時間：今日 09:00 到 17:30；若有 el.dataset 則優先使用
+    const baseIso = el?.dataset?.date || `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`;
+    const datasetStart = el?.dataset?.start || '';
+    const datasetEnd = el?.dataset?.end || '';
+    const datasetEndIso = el?.dataset?.enddateiso || '';
+    const startDefault = datasetStart ? new Date(`${baseIso}T${datasetStart}:00`) : new Date(`${baseIso}T09:00:00`);
+    const endDefault = datasetEnd ? new Date(`${datasetEndIso || baseIso}T${datasetEnd}:00`) : new Date(`${baseIso}T17:30:00`);
+
     // 背景
     const backdrop = document.createElement('div');
-    backdrop.id = 'modal-backdrop';
-    backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    backdrop.id = 'apply-leave-backdrop';
+    backdrop.className = 'modal-backdrop fixed inset-0 bg-black/50 z-40';
 
-    // 彈窗
+    // 彈窗容器
     const modal = document.createElement('div');
-    modal.id = 'temp-leave-modal';
-    modal.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-[90%] max-w-md z-50';
+    modal.id = 'apply-leave-modal';
+    modal.className = 'modal-content w-[90%] max-w-md bg-white rounded-xl shadow-xl flex flex-col z-50 fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2';
 
-    // 標題
+    // 頂部標題列（橘色）
+    const header = document.createElement('div');
+    header.className = 'px-4 py-3 bg-orange-500 text-white rounded-t-xl flex items-center justify-between';
     const title = document.createElement('h3');
-    title.className = 'text-lg font-bold mb-4 text-center';
+    title.className = 'font-bold text-lg';
     title.textContent = '請假申請';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'text-white/90 hover:text-white';
+    closeBtn.innerHTML = '<i data-lucide="x" class="w-5 h-5"></i>';
+    closeBtn.addEventListener('click', () => { document.body.removeChild(backdrop); document.body.removeChild(modal); });
+    header.appendChild(title); header.appendChild(closeBtn);
 
-    // 顯示班表請假時間（只顯示，不可編輯）
-    const timeLabel = document.createElement('div');
-    timeLabel.className = 'text-sm font-medium text-gray-700 mb-1';
-    timeLabel.textContent = '請假時間';
+    // 內容區
+    const body = document.createElement('div');
+    body.className = 'p-4 space-y-4';
 
-    const timeValue = document.createElement('div');
-    timeValue.className = 'text-gray-900 mb-4';
-
-    const iso = el?.dataset?.date || new Date().toISOString().slice(0, 10);
-    const startStr = el?.dataset?.start || '';
-    const endStr = el?.dataset?.end || '';
-    const endIso = el?.dataset?.enddateiso || '';
-
-    const startDt = startStr ? new Date(`${iso}T${startStr}:00`) : new Date();
-    const effectiveEndIso = endIso || iso;
-    const endDt = endStr ? new Date(`${effectiveEndIso}T${endStr}:00`) : new Date(startDt.getTime() + 2 * 60 * 60 * 1000);
-
-    const fmt = (dt) => {
-        const yyyy = dt.getFullYear();
-        const mm = String(dt.getMonth() + 1).padStart(2, '0');
-        const dd = String(dt.getDate()).padStart(2, '0');
-        let h = dt.getHours();
-        const m = String(dt.getMinutes()).padStart(2, '0');
-        const ampm = h < 12 ? '上午' : '下午';
-        h = h % 12 || 12;
-        return `${yyyy}/${mm}/${dd} ${ampm} ${String(h).padStart(2, '0')}:${m}`;
-    };
-    const hours = Math.max(0, (endDt - startDt) / (1000 * 60 * 60));
-    timeValue.textContent = `${fmt(startDt)} ~ ${fmt(endDt)}（約 ${hours.toFixed(1)} 小時）`;
-
-    // 請假事由（唯一可輸入）
+    // 請假事由（下拉選單）
+    const reasonGroup = document.createElement('div');
     const reasonLabel = document.createElement('label');
     reasonLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
     reasonLabel.textContent = '請假事由';
+    const reasonSelect = document.createElement('select');
+    reasonSelect.id = 'leave-reason-select';
+    reasonSelect.className = 'w-full border border-gray-300 rounded-md p-2';
+    ['病假','事假','特休','公假','婚假','喪假','產假','其他'].forEach(opt => { const o=document.createElement('option'); o.value=opt;o.textContent=opt; reasonSelect.appendChild(o); });
+    reasonSelect.value = '病假';
+    reasonGroup.appendChild(reasonLabel); reasonGroup.appendChild(reasonSelect);
 
-    const reasonInput = document.createElement('input');
-    reasonInput.type = 'text';
-    reasonInput.placeholder = '例如：身體不適';
-    reasonInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    // 開始時間
+    const startGroup = document.createElement('div');
+    const startLabel = document.createElement('label');
+    startLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    startLabel.textContent = '開始時間';
+    const startInput = document.createElement('input');
+    startInput.type = 'datetime-local';
+    startInput.id = 'leave-start-input';
+    startInput.className = 'w-full border border-gray-300 rounded-md p-2';
+    startInput.value = toLocalInputValue(startDefault);
+    startGroup.appendChild(startLabel); startGroup.appendChild(startInput);
 
-    // 按鈕容器
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'flex justify-end space-x-2';
+    // 結束時間
+    const endGroup = document.createElement('div');
+    const endLabel = document.createElement('label');
+    endLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    endLabel.textContent = '結束時間';
+    const endInput = document.createElement('input');
+    endInput.type = 'datetime-local';
+    endInput.id = 'leave-end-input';
+    endInput.className = 'w-full border border-gray-300 rounded-md p-2';
+    endInput.value = toLocalInputValue(endDefault);
+    endGroup.appendChild(endLabel); endGroup.appendChild(endInput);
 
-    // 取消
+    // 說明文字
+    const tipText = document.createElement('div');
+    tipText.className = 'text-xs text-gray-600';
+    tipText.textContent = '時間格式：YYYY-MM-DD hh:mm（24 小時制；若顯示上午/下午，請選擇正確時段。例如 17:00 表示下午 5:00）';
+    const workHours = document.createElement('div');
+    workHours.className = 'text-xs text-gray-600';
+    workHours.textContent = '營日上班時間：09:00 ~ 17:30（上班日）';
+
+    body.appendChild(reasonGroup);
+    body.appendChild(startGroup);
+    body.appendChild(endGroup);
+    body.appendChild(tipText);
+    body.appendChild(workHours);
+
+    // 底部按鈕
+    const footer = document.createElement('div');
+    footer.className = 'px-4 pb-4 flex justify-end space-x-2';
     const cancelButton = document.createElement('button');
-    cancelButton.className = 'px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400';
+    cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300';
     cancelButton.textContent = '取消';
-    cancelButton.addEventListener('click', closeAllModals);
-
-    // 確認
-    const confirmButton = document.createElement('button');
-    confirmButton.className = 'px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600';
-    confirmButton.textContent = '確認請假';
-    confirmButton.addEventListener('click', async () => {
-        const reason = reasonInput.value.trim();
-        if (!reason) {
-            showToast('請輸入請假事由', true);
-            return;
-        }
+    cancelButton.addEventListener('click', () => { document.body.removeChild(backdrop); document.body.removeChild(modal); });
+    const submitButton = document.createElement('button');
+    submitButton.className = 'px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600';
+    submitButton.textContent = '提交申請';
+    submitButton.addEventListener('click', async () => {
         try {
             showLoading(true);
             const user = window.__auth?.currentUser;
-            if (!user) {
-                showToast('請先登入', true);
-                showLoading(false);
-                return;
-            }
+            if (!user) { showToast('請先登入', true); showLoading(false); return; }
+            const startVal = startInput.value; const endVal = endInput.value; const reasonVal = reasonSelect.value;
+            if (!startVal || !endVal) { showToast('請選擇開始與結束時間', true); showLoading(false); return; }
+            const startDt = new Date(startVal); const endDt = new Date(endVal);
+            if (isNaN(startDt) || isNaN(endDt)) { showToast('時間格式不正確', true); showLoading(false); return; }
+            if (endDt <= startDt) { showToast('結束時間必須晚於開始時間', true); showLoading(false); return; }
 
             const { addDoc, collection, updateDoc, doc, serverTimestamp, Timestamp } = window.__fs;
             await addDoc(collection(window.__db, 'leaves'), {
                 userId: user.uid,
                 userName: (state.currentUserData?.name || user?.displayName || user?.email || ''),
-                reason,
+                reason: reasonVal,
                 startTime: Timestamp.fromDate(startDt),
                 endTime: Timestamp.fromDate(endDt),
                 status: 'pending',
@@ -822,7 +847,7 @@ function openTempLeaveModal(el) {
             updateStatusDisplay();
             updateButtonStatus();
             showToast('請假申請已提交，等待審核');
-            closeAllModals();
+            document.body.removeChild(backdrop); document.body.removeChild(modal);
         } catch (error) {
             console.error('提交請假申請失敗:', error);
             showToast('提交請假申請失敗，請稍後再試', true);
@@ -830,22 +855,16 @@ function openTempLeaveModal(el) {
             showLoading(false);
         }
     });
+    footer.appendChild(cancelButton); footer.appendChild(submitButton);
 
     // 組裝
-    buttonContainer.appendChild(cancelButton);
-    buttonContainer.appendChild(confirmButton);
-    modal.appendChild(title);
-    modal.appendChild(timeLabel);
-    modal.appendChild(timeValue);
-    modal.appendChild(reasonLabel);
-    modal.appendChild(reasonInput);
-    modal.appendChild(buttonContainer);
-
-    // 加到頁面
+    modal.appendChild(header);
+    modal.appendChild(body);
+    modal.appendChild(footer);
     document.body.appendChild(backdrop);
     document.body.appendChild(modal);
 
-    reasonInput.focus();
+    try { lucide.createIcons(); } catch (_) {}
 }
 
 // 特殊勤務彈窗

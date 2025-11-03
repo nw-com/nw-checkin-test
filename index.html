@@ -4835,9 +4835,6 @@
                         <button id="relocate-btn" class="w-full bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 flex items-center justify-center mb-4">
                             <i data-lucide="locate-fixed" class="w-4 h-4 mr-2"></i>重新定位
                         </button>
-                        <button id="leave-apply-btn" class="w-full bg-orange-500 text-white font-semibold py-2 px-4 rounded-md hover:bg-orange-600 flex items-center justify-center mb-4">
-                            <i data-lucide="calendar" class="w-4 h-4 mr-2"></i>請假申請
-                        </button>
                         <div id="map-container" class="flex-grow rounded-lg overflow-hidden border border-gray-300 relative">
                              <div id="map" class="map-canvas"></div>
                              <div id="map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center pointer-events-none"><div class="loader"></div></div>
@@ -4849,6 +4846,11 @@
                             <!-- 僅保留兩個按鈕：上班、下班；請假申請已移至子分頁 -->
                             <button id="work-start-btn" data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
                             <button id="work-end-btn" data-type="下班" class="clock-in-btn bg-red-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-red-600">下班打卡</button>
+                        </div>
+                        <div class="pt-2">
+                            <button id="leave-apply-btn" class="w-full bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-orange-600 flex items-center justify-center">
+                                <i data-lucide="calendar" class="w-4 h-4 mr-2"></i>請假申請
+                            </button>
                         </div>
                     </div>`;
                 lucide.createIcons();
