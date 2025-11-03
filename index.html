@@ -1385,25 +1385,22 @@
                 const navGroup = document.getElementById('nav-group');
                 const navFeatures = document.getElementById('nav-features');
                 const navCalendar = document.getElementById('nav-calendar');
-                const navSchedule = document.getElementById('nav-schedule');
                 const navDashboard = document.querySelector('.tab-btn[data-tab="dashboard"]');
                 const navClockIn = document.querySelector('.tab-btn[data-tab="clock-in"]');
 
                 // 導覽顯示權限（角色：admin、manager、junior_manager、總幹事、秘書、保全、清潔、機電）
                 const role = state.currentUserData.role;
-                [navTracking, navSettings, navHr, navGroup, navSchedule].forEach(el => el && el.classList.add('hide'));
+                [navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
 
                 if (role === 'admin') {
-                    // 管理員：顯示追蹤與排班；設定已移至導覽頁
+                    // 管理員：顯示追蹤；設定已移至導覽頁
                     navTracking && navTracking.classList.remove('hide');
-                    navSchedule && navSchedule.classList.remove('hide');
                     navSettings && navSettings.classList.add('hide');
                     // 人事分頁不再針對「人事」角色開放，預設隱藏
                     navHr && navHr.classList.add('hide');
                 } else if (role === 'manager') {
-                    // 高階主管：顯示追蹤與排班
+                    // 高階主管：顯示追蹤
                     navTracking && navTracking.classList.remove('hide');
-                    navSchedule && navSchedule.classList.remove('hide');
                     navSettings && navSettings.classList.add('hide');
                 } else if (role === 'junior_manager') {
                     // 初階主管：僅顯示群組
@@ -1690,28 +1687,24 @@
             function applyRoleNavVisibility() {
                 const role = state.currentUserData?.role || '';
                 const navTracking = document.getElementById('nav-tracking');
-                const navSchedule = document.getElementById('nav-schedule');
                 const navSettings = document.getElementById('nav-settings');
                 const navHr = document.getElementById('nav-hr');
                 const navGroup = document.getElementById('nav-group');
 
                 // 預設隱藏進階分頁
                 navTracking && navTracking.classList.add('hide');
-                navSchedule && navSchedule.classList.add('hide');
                 navSettings && navSettings.classList.add('hide');
                 navHr && navHr.classList.add('hide');
                 navGroup && navGroup.classList.add('hide');
 
                 if (role === 'admin') {
                     navTracking && navTracking.classList.remove('hide');
-                    navSchedule && navSchedule.classList.remove('hide');
                     // 全域設定已移至導覽頁設定，保持隱藏
                     navSettings && navSettings.classList.add('hide');
                     // 人事保持隱藏
                     navHr && navHr.classList.add('hide');
                 } else if (role === 'manager') {
                     navTracking && navTracking.classList.remove('hide');
-                    navSchedule && navSchedule.classList.remove('hide');
                     navSettings && navSettings.classList.add('hide');
                 } else if (role === 'junior_manager') {
                     navGroup && navGroup.classList.remove('hide');
@@ -1742,7 +1735,6 @@
                         case 'hr': return 'nav-hr';
                         case 'features': return 'nav-features';
                         case 'calendar': return 'nav-calendar';
-                        case 'schedule': return 'nav-schedule';
                         case 'settings': return 'nav-settings';
                         case 'group': return 'nav-group';
                         default: return '';
@@ -1754,9 +1746,6 @@
                     pushItem('dashboard', 'layout-dashboard', '儀表板');
                     if (['admin','hr','manager','junior_manager'].includes(role)) {
                         pushItem('tracking', 'map-pin', '追蹤');
-                    }
-                    if (['admin','hr','manager','junior_manager'].includes(role)) {
-                        pushItem('schedule', 'calendar-days', '排班');
                     }
                     pushItem('features', 'layers', '功能');
                     if (['admin','hr','manager','junior_manager'].includes(role)) {
@@ -1837,7 +1826,6 @@
                     'tracking': () => ['admin','hr','manager','junior_manager'].includes(role) ? renderTracking(subPage || 'map', params) : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'training'),
                     'calendar': () => renderCalendar(subPage || 'overview'),
-                    'schedule': () => ['admin','hr','manager','junior_manager'].includes(role) ? renderShifts(subPage || null) : renderAccessDenied(),
                     'settings': () => role === 'admin' ? renderSettings(subPage || 'applications') : renderAccessDenied(),
                     'hr': () => (['admin','hr','manager','junior_manager'].includes(role)) ? renderHR(subPage || 'applications') : renderAccessDenied(),
                     'navigation': () => isNavigationAllowed(state.currentUserData) ? renderNavigation(subPage || 'community') : renderAccessDenied(),
@@ -7075,7 +7063,7 @@
                         <button data-subtab="map" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'map' || !subPage ? 'active' : ''}">人員地圖</button>
                         <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">出勤紀錄</button>
                         <button data-subtab="leave" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leave' ? 'active' : ''}">假單審核</button>
-                        <button data-subtab="retro" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'retro' ? 'active' : ''}">修改申請</button>
+                        <button data-subtab="retro" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'retro' ? 'active' : ''}">修改申請審核</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
                 
@@ -7085,7 +7073,7 @@
                 } else if (subPage === 'leave') {
                     renderTrackingLeave(subPageContent);
                 } else if (subPage === 'retro') {
-                    renderRetroClockRequestForm(subPageContent);
+                    renderRetroApprovals(subPageContent);
                 } else {
                     renderTrackingMap(subPageContent);
                 }
@@ -7224,13 +7212,13 @@
                 try { renderMyRetroRequests(); } catch(e) {}
             }
 
-            // 補打申請審核頁面
-            /* async function renderRetroApprovals(container) {
+            // 修改申請審核頁面（僅顯示當前社區成員提出的申請）
+            async function renderRetroApprovals(container) {
                 container.innerHTML = `
                     <div class="p-4 h-full">
                         <div class="bg-white rounded-lg shadow-sm border p-4">
                             <div class="flex items-center justify-between mb-3">
-                                <h2 class="text-lg font-bold">補打申請審核</h2>
+                                <h2 class="text-lg font-bold">修改申請審核</h2>
                                 <button id="manual-add-record" class="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">新增人員打卡紀錄</button>
                             </div>
                             <div class="mb-3 flex items-center gap-2">
@@ -7247,14 +7235,26 @@
                 const listEl = document.getElementById('retro-requests-list');
                 const filterDateEl = document.getElementById('retro-filter-date');
                 const filterUserEl = document.getElementById('retro-filter-user');
+                const currentCommId = state.currentCommunity?.id || null;
+                const currentCommCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
+                if (!currentCommId && !currentCommCode) {
+                    listEl.innerHTML = `<p class="text-center text-gray-500 p-4">請先選擇社區</p>`;
+                }
 
                 // 載入人員下拉
+                const userInfo = {};
                 try {
                     const us = await getDocs(collection(db, 'users'));
                     us.forEach(d => {
-                        const opt = document.createElement('option');
-                        opt.value = d.id; opt.textContent = d.data().name || d.id;
-                        filterUserEl.appendChild(opt);
+                        const data = d.data();
+                        const svc = Array.isArray(data.serviceCommunities) ? data.serviceCommunities.filter(Boolean) : [];
+                        const inCommunity = (svc.includes(currentCommId) || svc.includes(currentCommCode));
+                        userInfo[d.id] = { name: data.name || d.id, serviceCommunities: svc };
+                        if (inCommunity) {
+                            const opt = document.createElement('option');
+                            opt.value = d.id; opt.textContent = data.name || d.id;
+                            filterUserEl.appendChild(opt);
+                        }
                     });
                 } catch(e) {}
 
@@ -7269,17 +7269,17 @@
                             const req = { id: docSnap.id, ...docSnap.data() };
                             const when = req.targetTime?.toDate?.() ? req.targetTime.toDate() : (req.targetTime ? new Date(req.targetTime) : null);
                             const dateStr = when ? when.toISOString().split('T')[0] : '';
+                            // 僅顯示當前社區成員提出的申請
+                            const svc = userInfo[req.userId]?.serviceCommunities || [];
+                            const inCommunity = (svc.includes(currentCommId) || svc.includes(currentCommCode));
+                            if (!inCommunity) return;
                             if (selectedUser && req.userId !== selectedUser) return;
                             if (selectedDate && dateStr !== selectedDate) return;
                             items.push({ ...req, when });
                         });
                         if (items.length === 0) { listEl.innerHTML = `<p class="text-center text-gray-500 p-4">無符合條件的申請</p>`; return; }
                         // 載入使用者名稱映射
-                        const userMap = {};
-                        try {
-                            const us = await getDocs(collection(db, 'users'));
-                            us.forEach(d => userMap[d.id] = d.data().name || d.id);
-                        } catch(e) {}
+                        const userMap = Object.fromEntries(Object.entries(userInfo).map(([uid, info]) => [uid, info.name]));
                         listEl.innerHTML = '';
                         items.forEach(req => {
                             const userName = userMap[req.userId] || req.userId;
@@ -7503,7 +7503,7 @@
                 });
 
                 await renderList();
-            } */
+            }
 
             // 人員分頁：帳號申請、帳號列表（各社區獨立內容）
             function renderHR(subPage) {
@@ -7539,6 +7539,16 @@
             }
 
             function renderShifts(subPage) {
+                // 已移除：排班分頁功能
+                mainContent.innerHTML = `
+                    <div class="p-8 flex items-center justify-center h-full">
+                        <div class="text-center text-gray-500">
+                            <i data-lucide="alert-triangle" class="w-8 h-8 mx-auto mb-3"></i>
+                            <div>排班分頁已移除</div>
+                        </div>
+                    </div>`;
+                try { lucide.createIcons(); } catch (_) {}
+                return;
                 const comm = state.currentCommunity;
                 if (!comm || !comm.id) {
                     mainContent.innerHTML = `
