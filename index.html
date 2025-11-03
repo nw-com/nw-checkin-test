@@ -4795,20 +4795,21 @@
             function renderClockIn(subPage) {
                 const role = state.currentUserData?.role || '';
                 const isStaff = new Set(['總幹事','秘書','保全','清潔','機電']).has(role);
+                // 恢復定位打卡子分頁；移除我的班表
                 const tabs = isStaff
                     ? [
-                        { key: 'workdays', label: '我的班表' },
+                        { key: 'location', label: '定位打卡' },
                         { key: 'records', label: '打卡紀錄' },
                         { key: 'leaves', label: '請假申請' }
                       ]
                     : [
-                        { key: 'workdays', label: '我的班表' },
+                        { key: 'location', label: '定位打卡' },
                         { key: 'records', label: '打卡紀錄' },
                         { key: 'leaves', label: '請假申請' }
                       ];
 
                 const tabsHtml = tabs.map(t => `
-                    <button data-subtab="${t.key}" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${(subPage === t.key || (!subPage && t.key === 'workdays')) ? 'active' : ''}">${t.label}</button>
+                    <button data-subtab="${t.key}" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${(subPage === t.key || (!subPage && t.key === 'location')) ? 'active' : ''}">${t.label}</button>
                 `).join('');
 
                 mainContent.innerHTML = `
@@ -4818,16 +4819,17 @@
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
 
                 const subPageContent = document.getElementById('sub-page-content');
-                if (subPage === 'records') {
+                if (subPage === 'location' || !subPage) {
+                    renderClockInLocation(subPageContent);
+                } else if (subPage === 'records') {
                     renderClockInRecords(subPageContent);
                 } else if (subPage === 'retro') {
                     renderRetroClockRequestForm(subPageContent);
                 } else if (subPage === 'leaves') {
                     renderMyLeaveRecords(subPageContent);
                 } else {
-                    // 只讀的我的班表（月視圖）
-                    renderWorkDatesMonthView(subPageContent);
-                    try { updateMyScheduleButtons(); } catch (e) { console.warn('updateMyScheduleButtons 初始化失敗', e); }
+                    // 預設回到定位打卡
+                    renderClockInLocation(subPageContent);
                 }
 
                 mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('clock-in', btn.dataset.subtab)));
