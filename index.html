@@ -11777,6 +11777,7 @@ function renderTrackingLeave(container) {
                 const selectedCommunityId = state.currentCommunity?.id || window.pageState?.selectedCommunityId || null;
                 const selectedCommunityCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
                 let communityUserIds = new Set();
+                let communityUserNames = {};
 
                 // 取得僅屬於目前社區的帳號清單（ID 集合）
                 async function ensureCommunityUserIds() {
@@ -11795,7 +11796,7 @@ function renderTrackingLeave(container) {
                             const oneCode = (data.serviceCommunityCode || '').trim();
                             const byId = selectedCommunityId ? svcIds.includes(selectedCommunityId) : false;
                             const byCode = selectedCommunityCode ? (svcCodes.includes(selectedCommunityCode) || oneCode === selectedCommunityCode) : false;
-                            if (byId || byCode) ids.push(d.id);
+                            if (byId || byCode) { ids.push(d.id); communityUserNames[d.id] = data?.name || d.id; }
                         });
                         communityUserIds = new Set(ids);
                     } catch (err) {
@@ -11962,7 +11963,7 @@ function renderTrackingLeave(container) {
                             row.innerHTML = `
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex items-center">
-                                        <div class="text-sm font-medium text-gray-900">${leave.userName || '未知用戶'}</div>
+                                        <div class="text-sm font-medium text-gray-900">${(communityUserNames[(leave.userId || leave.userID || leave.uid)] || leave.userName || '未知用戶')}</div>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">

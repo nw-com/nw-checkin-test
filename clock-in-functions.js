@@ -764,9 +764,23 @@ function openTempLeaveModal(el) {
     const reasonSelect = document.createElement('select');
     reasonSelect.id = 'leave-reason-select';
     reasonSelect.className = 'w-full border border-gray-300 rounded-md p-2';
-    ['病假','事假','特休','公假','婚假','喪假','產假','其他'].forEach(opt => { const o=document.createElement('option'); o.value=opt;o.textContent=opt; reasonSelect.appendChild(o); });
+    ['病假','事假','其他（自定義）'].forEach(opt => { const o=document.createElement('option'); o.value=opt; o.textContent=opt; reasonSelect.appendChild(o); });
     reasonSelect.value = '病假';
     reasonGroup.appendChild(reasonLabel); reasonGroup.appendChild(reasonSelect);
+
+    // 自定義事由輸入（僅在選擇「其他（自定義）」時顯示）
+    const otherReasonGroup = document.createElement('div');
+    otherReasonGroup.className = 'mt-2 hidden';
+    const otherReasonLabel = document.createElement('label');
+    otherReasonLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    otherReasonLabel.textContent = '自定義事由';
+    const otherReasonInput = document.createElement('input');
+    otherReasonInput.type = 'text';
+    otherReasonInput.id = 'leave-reason-custom';
+    otherReasonInput.className = 'w-full border border-gray-300 rounded-md p-2';
+    otherReasonInput.placeholder = '請輸入事由';
+    otherReasonGroup.appendChild(otherReasonLabel);
+    otherReasonGroup.appendChild(otherReasonInput);
 
     // 開始時間
     const startGroup = document.createElement('div');
@@ -801,6 +815,7 @@ function openTempLeaveModal(el) {
     workHours.textContent = '營日上班時間：09:00 ~ 17:30（上班日）';
 
     body.appendChild(reasonGroup);
+    body.appendChild(otherReasonGroup);
     body.appendChild(startGroup);
     body.appendChild(endGroup);
     body.appendChild(tipText);
@@ -827,11 +842,17 @@ function openTempLeaveModal(el) {
             if (isNaN(startDt) || isNaN(endDt)) { showToast('時間格式不正確', true); showLoading(false); return; }
             if (endDt <= startDt) { showToast('結束時間必須晚於開始時間', true); showLoading(false); return; }
 
+            const isOther = reasonVal.startsWith('其他');
+            const reasonText = isOther ? (otherReasonInput.value || '').trim() : reasonVal;
+            const reasonType = isOther ? '其他' : reasonVal;
+            if (isOther && !reasonText) { showToast('請輸入自定義事由', true); showLoading(false); return; }
+
             const { addDoc, collection, updateDoc, doc, serverTimestamp, Timestamp } = window.__fs;
             await addDoc(collection(window.__db, 'leaves'), {
                 userId: user.uid,
                 userName: (state.currentUserData?.name || user?.displayName || user?.email || ''),
-                reason: reasonVal,
+                reason: reasonText,
+                reasonType,
                 startTime: Timestamp.fromDate(startDt),
                 endTime: Timestamp.fromDate(endDt),
                 status: 'pending',
@@ -865,6 +886,15 @@ function openTempLeaveModal(el) {
     document.body.appendChild(modal);
 
     try { lucide.createIcons(); } catch (_) {}
+
+    // 切換自定義事由顯示
+    const toggleCustomReason = () => {
+        const showCustom = reasonSelect.value.startsWith('其他');
+        if (showCustom) otherReasonGroup.classList.remove('hidden');
+        else otherReasonGroup.classList.add('hidden');
+    };
+    reasonSelect.addEventListener('change', toggleCustomReason);
+    toggleCustomReason();
 }
 
 // 特殊勤務彈窗
