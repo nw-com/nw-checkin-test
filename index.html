@@ -4808,9 +4808,13 @@
                         { key: 'leaves', label: '請假申請' }
                       ];
 
-                const tabsHtml = tabs.map(t => `
-                    <button data-subtab="${t.key}" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${(subPage === t.key || (!subPage && t.key === 'location')) ? 'active' : ''}">${t.label}</button>
-                `).join('');
+                const tabsHtml = tabs.map(t => {
+                    const isActive = (subPage === t.key || (!subPage && t.key === 'location'));
+                    const activeCls = isActive ? 'active bg-red-100 text-red-600' : 'text-gray-600';
+                    return `
+                        <button data-subtab="${t.key}" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium ${activeCls}">${t.label}</button>
+                    `;
+                }).join('');
 
                 mainContent.innerHTML = `
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
@@ -7071,6 +7075,7 @@
                         <button data-subtab="map" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'map' || !subPage ? 'active' : ''}">人員地圖</button>
                         <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">出勤紀錄</button>
                         <button data-subtab="leave" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leave' ? 'active' : ''}">假單審核</button>
+                        <button data-subtab="retro" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'retro' ? 'active' : ''}">修改申請</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
                 
@@ -7079,6 +7084,8 @@
                     renderTrackingAttendanceSchedule(subPageContent, params);
                 } else if (subPage === 'leave') {
                     renderTrackingLeave(subPageContent);
+                } else if (subPage === 'retro') {
+                    renderRetroClockRequestForm(subPageContent);
                 } else {
                     renderTrackingMap(subPageContent);
                 }
