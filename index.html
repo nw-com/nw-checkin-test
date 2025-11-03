@@ -1822,7 +1822,7 @@
                 const role = state.currentUserData?.role || '';
                 const router = {
                     'dashboard': renderDashboard,
-                    'clock-in': () => renderClockIn(subPage || 'workdays'),
+                    'clock-in': () => renderClockIn(subPage || 'location'),
                     'tracking': () => ['admin','hr','manager','junior_manager'].includes(role) ? renderTracking(subPage || 'map', params) : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'training'),
                     'calendar': () => renderCalendar(subPage || 'overview'),
@@ -4796,8 +4796,10 @@
                         { key: 'leaves', label: '請假申請' }
                       ];
 
+                const knownKeys = tabs.map(t => t.key);
+                const currentSub = knownKeys.includes(subPage) ? subPage : 'location';
                 const tabsHtml = tabs.map(t => {
-                    const isActive = (subPage === t.key || (!subPage && t.key === 'location'));
+                    const isActive = currentSub === t.key;
                     const activeCls = isActive ? 'active bg-red-100 text-red-600' : 'text-gray-600';
                     return `
                         <button data-subtab="${t.key}" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium ${activeCls}">${t.label}</button>
@@ -4811,13 +4813,13 @@
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
 
                 const subPageContent = document.getElementById('sub-page-content');
-                if (subPage === 'location' || !subPage) {
+                if (currentSub === 'location') {
                     renderClockInLocation(subPageContent);
-                } else if (subPage === 'records') {
+                } else if (currentSub === 'records') {
                     renderClockInRecords(subPageContent);
-                } else if (subPage === 'retro') {
+                } else if (currentSub === 'retro') {
                     renderRetroClockRequestForm(subPageContent);
-                } else if (subPage === 'leaves') {
+                } else if (currentSub === 'leaves') {
                     renderMyLeaveRecords(subPageContent);
                 } else {
                     // 預設回到定位打卡
