@@ -11128,39 +11128,35 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                                 const timeB = b.timestamp?.toDate?.() || new Date(0);
                                 return timeB - timeA;
                             }).forEach(record => {
-                                const time = record.timestamp?.toDate?.() || new Date();
                                 const userName = usersMap[record.userId] || '未知用戶';
+                                const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                                const statusColor = getStatusColor(statusText);
                                 const abnormalInfo = computeRecordAbnormal(record, (users.find(u => u.id === record.userId)?.serviceCommunities) || []);
                                 const abnormalHtml = (abnormalInfo && abnormalInfo.isAbnormal)
-                                    ? `<div class="mt-1"><span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700 border border-red-200">打卡位置異常</span>${abnormalInfo.detail ? `<span class=\"ml-2 text-xs text-gray-500\">${abnormalInfo.detail}</span>` : ''}</div>`
+                                    ? `<div class="mt-1 flex items-center"><span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700 border border-red-200">打卡位置異常</span>${abnormalInfo.detail ? `<span class=\"ml-2 text-xs text-gray-500\">${abnormalInfo.detail}</span>` : ''}</div>`
                                     : '';
-                                
+
                                 const card = document.createElement('div');
-                                card.className = 'bg-white p-4 rounded-lg shadow border border-gray-200';
+                                card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
                                 card.innerHTML = `
                                     <div class="flex justify-between items-start">
                                         <div>
-                                            <div class="font-semibold">${userName}</div>
-                                            <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW', { hour12: false })}</div>
-                                            <div class="mt-1 flex items-center">
-                                                <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null))}">${getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null)}</span>
-                        ${record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
-                                            </div>
-                                            <div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId || '未知'}</div>
+                                            <p class="text-sm text-gray-700">${userName}</p>
+                                            <p class="font-bold text-lg ${statusColor}">${statusText}</p>
+                                            <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
                                             ${abnormalHtml}
                                         </div>
-                                        <div class="flex space-x-2 items-start"></div>
                                     </div>
-                                    <div class="mt-2 flex space-x-2 overflow-x-auto items-center">
+                                    <div class="mt-2 flex space-x-2 overflow-x-auto">
                                         ${record.photoUrls && record.photoUrls.length > 0 ? `
-                                            <button class="photo-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" 
+                                            <button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
                                                 data-photos='${encodeURIComponent(JSON.stringify(record.photoUrls || []))}' 
                                                 data-descriptions='${encodeURIComponent(JSON.stringify(record.descriptions || []))}'>
                                                 <i data-lucide="image"></i> 照片 (${record.photoUrls.length})
                                             </button>
                                         ` : ''}
                                         ${record.location ? `
-                                            <button class="map-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
+                                            <button class="map-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" 
                                                 data-lat="${record.location.latitude}" 
                                                 data-lng="${record.location.longitude}">
                                                 <i data-lucide="map-pin"></i> 地圖
