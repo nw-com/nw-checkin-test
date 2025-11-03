@@ -4835,6 +4835,9 @@
                         <button id="relocate-btn" class="w-full bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 flex items-center justify-center mb-4">
                             <i data-lucide="locate-fixed" class="w-4 h-4 mr-2"></i>重新定位
                         </button>
+                        <button id="leave-apply-btn" class="w-full bg-orange-500 text-white font-semibold py-2 px-4 rounded-md hover:bg-orange-600 flex items-center justify-center mb-4">
+                            <i data-lucide="calendar" class="w-4 h-4 mr-2"></i>請假申請
+                        </button>
                         <div id="map-container" class="flex-grow rounded-lg overflow-hidden border border-gray-300 relative">
                              <div id="map" class="map-canvas"></div>
                              <div id="map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center pointer-events-none"><div class="loader"></div></div>
@@ -4852,6 +4855,12 @@
                 initClockInMap();
 
                 document.getElementById('relocate-btn').addEventListener('click', initClockInMap);
+                const leaveBtn = document.getElementById('leave-apply-btn');
+                if (leaveBtn) {
+                    leaveBtn.addEventListener('click', () => {
+                        try { openTempLeaveModal(); } catch (e) { showToast('無法開啟請假申請', true); }
+                    });
+                }
                 
                 // 初始化打卡狀態（在定位打卡子頁渲染完成後）
                 initClockInButtonStatus();
@@ -7022,6 +7031,28 @@
                 }
                 
                 try {
+                    // 計算社區中心與半徑設定（若社區無設定則以公司設定為備援）
+                    let center = null, radius = null;
+                    async function computeCenterAndRadius() {
+                        const c = state.currentCommunity || {};
+                        if (typeof c.lat === 'number' && typeof c.lng === 'number') {
+                            center = { lat: c.lat, lng: c.lng };
+                            if (typeof c.radius === 'number' && c.radius > 0) radius = c.radius;
+                        }
+                        if (!center) {
+                            try {
+                                const { getDoc, doc } = window.__fs; const db = window.__db;
+                                const docSnap = await getDoc(doc(db, 'settings', 'location'));
+                                if (docSnap.exists()) {
+                                    const s = docSnap.data() || {};
+                                    if (typeof s.communityLat === 'number' && typeof s.communityLng === 'number') center = { lat: s.communityLat, lng: s.communityLng };
+                                    else if (typeof s.companyLat === 'number' && typeof s.companyLng === 'number') center = { lat: s.companyLat, lng: s.companyLng };
+                                    if (typeof s.companyRadius === 'number' && s.companyRadius > 0) radius = s.companyRadius;
+                                }
+                            } catch (_) {}
+                        }
+                    }
+                    await computeCenterAndRadius();
                     const pos = await new Promise((resolve, reject) => {
                         navigator.geolocation.getCurrentPosition(resolve, reject, { 
                             enableHighAccuracy: true, 
@@ -7048,6 +7079,11 @@
                         position: coords, 
                         map: map 
                     });
+                    // 描繪打卡設定半徑範圍（若取得中心與半徑）
+                    if (center && typeof radius === 'number') {
+                        try { state.clockinRadiusCircle && state.clockinRadiusCircle.setMap(null); } catch (_) {}
+                        state.clockinRadiusCircle = new google.maps.Circle({ map, center, radius, strokeColor:'#FF0000', strokeOpacity:0.8, strokeWeight:2, fillColor:'#FF0000', fillOpacity:0.1 });
+                    }
                     
                     mapLoader.classList.add('hide');
                 } catch (error) {
