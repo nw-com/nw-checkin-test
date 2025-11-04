@@ -11165,7 +11165,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                     try {
                         const base = [where("timestamp", ">=", startTS), where("timestamp", "<=", endTS)];
                         if (selectedUserId !== 'all') base.unshift(where("userId", "==", selectedUserId));
-                        if (currentComm?.id) base.push(where('communityId','==', currentComm.id));
+                        // 不在查詢層面套用 communityId，避免舊紀錄缺欄位被排除；改以前端過濾
                         q = query(recordsRef, ...base);
                     } catch (_) {
                         // 後備查詢（避免複合索引未建立）
