@@ -680,6 +680,31 @@
                 return R * c;
             }
 
+            // 取得社區中心與打卡半徑（優先使用 state.currentCommunity，否則回退 settings/location）
+            async function fetchCommunityCenterAndRadius() {
+                try {
+                    const c = state.currentCommunity || {};
+                    let center = null, radius = null;
+                    if (typeof c.lat === 'number' && typeof c.lng === 'number') {
+                        center = { lat: c.lat, lng: c.lng };
+                        if (typeof c.radius === 'number' && c.radius > 0) radius = c.radius;
+                    }
+                    if (!center) {
+                        const { getDoc, doc } = window.__fs; const db = window.__db;
+                        const docSnap = await getDoc(doc(db, 'settings', 'location'));
+                        if (docSnap.exists()) {
+                            const s = docSnap.data() || {};
+                            if (typeof s.communityLat === 'number' && typeof s.communityLng === 'number') center = { lat: s.communityLat, lng: s.communityLng };
+                            else if (typeof s.companyLat === 'number' && typeof s.companyLng === 'number') center = { lat: s.companyLat, lng: s.companyLng };
+                            if (typeof s.companyRadius === 'number' && s.companyRadius > 0) radius = s.companyRadius;
+                        }
+                    }
+                    return { center, radius };
+                } catch (_) {
+                    return { center: null, radius: null };
+                }
+            }
+
             function openApplyAccountModal() {
                 const modalId = `apply-account-modal-${Date.now()}`;
                 const defaultAvatar = 'https://placehold.co/80x80/EFEFEF/333333?text=頭像';
@@ -4837,6 +4862,7 @@
                         <button id="relocate-btn" class="w-full bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 flex items-center justify-center mb-4">
                             <i data-lucide="locate-fixed" class="w-4 h-4 mr-2"></i>重新定位
                         </button>
+                        <div class="text-center text-sm text-gray-600 mb-2">打卡必須在社區範圍內</div>
                         <div id="map-container" class="flex-grow rounded-lg overflow-hidden border border-gray-300 relative">
                              <div id="map" class="map-canvas"></div>
                              <div id="map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center pointer-events-none"><div class="loader"></div></div>
@@ -4872,13 +4898,29 @@
                 
                 // 打卡按鈕點擊事件
                 document.querySelectorAll('.clock-in-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
+                    btn.addEventListener('click', async (e) => {
                         if (btn.classList.contains('disabled')) {
                             return;
                         }
                         
                         if (!state.currentLocation) {
                             alert("無法取得目前位置，請稍後再試");
+                            return;
+                        }
+                        // 半徑內檢查：必須在社區範圍內才可打卡
+                        try {
+                            const { center, radius } = await fetchCommunityCenterAndRadius();
+                            if (!center || typeof radius !== 'number') {
+                                showToast('尚未設定社區中心或打卡半徑，請聯絡管理員', true);
+                                return;
+                            }
+                            const dist = calculateDistanceMeters(state.currentLocation.lat, state.currentLocation.lng, center.lat, center.lng);
+                            if (dist > radius) {
+                                showToast('您不在社區打卡範圍內，請移動至範圍內再打卡', true);
+                                return;
+                            }
+                        } catch (_) {
+                            showToast('檢查打卡範圍時發生錯誤，請稍後再試', true);
                             return;
                         }
                         
@@ -16244,8 +16286,11 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 const closeBtn = document.getElementById('clockin-close-btn');
                 closeBtn && closeBtn.addEventListener('click', closeMap);
                 const confirmBtn = document.getElementById('clockin-confirm-btn');
-                confirmBtn && confirmBtn.addEventListener('click', () => {
+                confirmBtn && confirmBtn.addEventListener('click', async () => {
                     if (!state.currentLocation) { alert('無法取得目前位置，請稍後再試'); return; }
+                    if (!center || typeof radius !== 'number') { showToast('尚未設定打卡範圍，請聯絡管理員', true); return; }
+                    const dist = calculateDistanceMeters(state.currentLocation.lat, state.currentLocation.lng, center.lat, center.lng);
+                    if (dist > radius) { showToast('您不在社區打卡範圍內，請移動至範圍內再打卡', true); return; }
                     const t = confirmBtn.getAttribute('data-type');
                     openCameraModal(t, state.currentLocation);
                 });
