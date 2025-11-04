@@ -11097,8 +11097,8 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                     });
                 }
                 
-                // 載入所有用戶
-                const { collection, getDocs } = window.__fs || {};
+                // 載入所有用戶（僅顯示指定角色且限目前社區）
+                const { collection, getDocs, query, where } = window.__fs || {};
                 const db = window.__db;
                 const usersRef = db && collection ? collection(db, "users") : null;
                 const userSelect = document.getElementById('user-select');
@@ -11106,14 +11106,30 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                     document.getElementById('attendance-records-list').innerHTML = '<div class="p-4 text-red-600">資料庫尚未就緒</div>';
                     return;
                 }
+                let __allowedIdsSet = null;
                 
                 getDocs(usersRef).then((querySnapshot) => {
                     const users = [];
                     querySnapshot.forEach(doc => {
                         users.push({ id: doc.id, ...doc.data() });
                     });
-                    
-                    users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
+                    // 目前社區過濾與角色過濾
+                    const currentCommId = state.currentCommunity?.id || null;
+                    const currentCommCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
+                    const allowedRoles = ['總幹事','秘書','保全','清潔','機電'];
+                    const pickTitle = (u) => ((u.applicationTitle || u.jobTitle || u.role || '').trim());
+                    const inCurrentCommunity = (u) => {
+                        const svcIds = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
+                        const svcCodes = Array.isArray(u.serviceCommunityCodes) ? u.serviceCommunityCodes : [];
+                        const oneCode = (u.serviceCommunityCode || '').trim();
+                        const byId = currentCommId ? svcIds.includes(currentCommId) : false;
+                        const byCode = currentCommCode ? (svcCodes.includes(currentCommCode) || oneCode === currentCommCode) : false;
+                        return byId || byCode;
+                    };
+                    const filteredUsers = users.filter(u => allowedRoles.includes(pickTitle(u)) && inCurrentCommunity(u));
+                    __allowedIdsSet = new Set(filteredUsers.map(u => u.id));
+
+                    filteredUsers.sort((a, b) => (a.name||'').localeCompare(b.name||'', 'zh-Hant')).forEach(user => {
                         const option = document.createElement('option');
                         option.value = user.id;
                         option.textContent = user.name;
@@ -11125,38 +11141,39 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                     }
                     
                     // 初始載入記錄
-                    loadAttendanceRecords();
+                    loadAttendanceRecords(__allowedIdsSet);
                 });
                 
                 const dateInput = document.getElementById('record-date');
-                userSelect.addEventListener('change', loadAttendanceRecords);
-                dateInput.addEventListener('change', loadAttendanceRecords);
+                userSelect.addEventListener('change', () => loadAttendanceRecords(__allowedIdsSet));
+                dateInput.addEventListener('change', () => loadAttendanceRecords(__allowedIdsSet));
                 
-                async function loadAttendanceRecords() {
+                async function loadAttendanceRecords(allowedIdsSetParam) {
                     const selectedDate = new Date(dateInput.value);
                     const startOfDay = new Date(selectedDate);
                     startOfDay.setHours(0, 0, 0, 0);
                     const endOfDay = new Date(selectedDate);
                     endOfDay.setHours(23, 59, 59, 999);
                     const selectedUserId = userSelect.value;
+                    const currentComm = state.currentCommunity || null;
                     
                     const recordsRef = collection(db, "clockInRecords");
                     let q;
                     const { Timestamp } = window.__fs || {};
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
-                    
-                    if (selectedUserId === 'all') {
-                        q = query(recordsRef, 
-                            where("timestamp", ">=", startTS),
-                            where("timestamp", "<=", endTS)
-                        );
-                    } else {
-                        q = query(recordsRef, 
-                            where("userId", "==", selectedUserId),
-                            where("timestamp", ">=", startTS),
-                            where("timestamp", "<=", endTS)
-                        );
+                    try {
+                        const base = [where("timestamp", ">=", startTS), where("timestamp", "<=", endTS)];
+                        if (selectedUserId !== 'all') base.unshift(where("userId", "==", selectedUserId));
+                        if (currentComm?.id) base.push(where('communityId','==', currentComm.id));
+                        q = query(recordsRef, ...base);
+                    } catch (_) {
+                        // 後備查詢（避免複合索引未建立）
+                        if (selectedUserId === 'all') {
+                            q = query(recordsRef, where("timestamp", ">=", startTS), where("timestamp", "<=", endTS));
+                        } else {
+                            q = query(recordsRef, where("userId", "==", selectedUserId), where("timestamp", ">=", startTS), where("timestamp", "<=", endTS));
+                        }
                     }
                     
                     const recordsList = document.getElementById('attendance-records-list');
@@ -11173,6 +11190,12 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         querySnapshot.forEach(doc => {
                             records.push({ id: doc.id, ...doc.data() });
                         });
+                        // 套用社區過濾與角色過濾（all 情況）
+                        const allowedIdsSet = allowedIdsSetParam instanceof Set ? allowedIdsSetParam : null;
+                        const communityFiltered = records.filter(r => recordMatchesCommunity(r, state.currentCommunity));
+                        const finalRecords = (selectedUserId === 'all')
+                            ? communityFiltered.filter(r => !allowedIdsSet || allowedIdsSet.has(r.userId))
+                            : communityFiltered;
                         
                         // 獲取所有用戶資料，用於顯示名稱
                         getDocs(usersRef).then((usersSnapshot) => {
@@ -11182,7 +11205,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                             });
                             
                             recordsList.innerHTML = '';
-                            records.sort((a, b) => {
+                            finalRecords.sort((a, b) => {
                                 const timeA = a.timestamp?.toDate?.() || new Date(0);
                                 const timeB = b.timestamp?.toDate?.() || new Date(0);
                                 return timeB - timeA;
@@ -11367,6 +11390,10 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         } catch (e) { console.warn('載入使用者失敗', e); }
                         users = users.filter(userInCurrentCommunity);
                     }
+                    // 角色過濾（僅顯示指定角色）
+                    const allowedRoles = ['總幹事','秘書','保全','清潔','機電'];
+                    const pickTitle = (u) => ((u.applicationTitle || u.jobTitle || u.role || '').trim());
+                    users = users.filter(u => allowedRoles.includes(pickTitle(u)));
 
                     users.sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'zh-Hant')).forEach(u => {
                         const opt = document.createElement('option');
