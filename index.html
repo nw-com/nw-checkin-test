@@ -11299,406 +11299,73 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
             }
             
             function renderTrackingAttendanceSchedule(container, params = {}) {
-  const todayIso = new Date().toISOString().split('T')[0];
-  container.innerHTML = `
-    <div class="p-4 space-y-4">
-      <div class="flex flex-wrap items-center gap-4 mb-2">
-        <div class="flex items-center space-x-2">
-          <label for="schedule-date" class="text-sm font-medium">日期:</label>
-          <input type="date" id="schedule-date" value="${todayIso}" class="border border-gray-300 rounded-md px-2 py-1" />
-        </div>
-        <div class="flex items-center space-x-2">
-          <label for="schedule-user" class="text-sm font-medium">人員:</label>
-          <select id="schedule-user" class="border border-gray-300 rounded-md px-2 py-1">
-            <option value="all">全部人員</option>
-          </select>
-        </div>
-        <!-- 哨點篩選已移除：列表改為顯示全社區排班 -->
-      </div>
-      <div class="bg-white rounded-lg shadow overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200 text-sm">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="px-3 py-2 text-left whitespace-nowrap">角色</th>
-              <th class="px-3 py-2 text-left whitespace-nowrap">指派人員</th>
-              <th class="px-3 py-2 text-left whitespace-nowrap">排定上班時間</th>
-              <th class="px-3 py-2 text-left whitespace-nowrap">實際打卡時間</th>
-              <th class="px-3 py-2 text-left whitespace-nowrap">排定下班時間</th>
-              <th class="px-3 py-2 text-left whitespace-nowrap">實際打卡下班時間</th>
-              <th class="px-3 py-2 text-left whitespace-nowrap">狀態</th>
-              <th class="px-3 py-2 text-left whitespace-nowrap">操作</th>
-            </tr>
-          </thead>
-          <tbody id="schedule-rows">
-            <tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">正在載入當日排班...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-  try { lucide.createIcons(); } catch (_) {}
+                const todayIso = new Date().toISOString().split('T')[0];
+                container.innerHTML = `
+                    <div class="p-4 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4 mb-2">
+                            <div class="flex items-center space-x-2">
+                                <label for="user-select" class="text-sm font-medium">選擇人員:</label>
+                                <select id="user-select" class="border border-gray-300 rounded-md px-2 py-1">
+                                    <option value="all">全部人員</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="record-date" class="text-sm font-medium">日期:</label>
+                                <input type="date" id="record-date" value="${params.selectedDate || todayIso}" class="border border-gray-300 rounded-md px-2 py-1" />
+                            </div>
+                        </div>
+                        <div id="attendance-records-list" class="space-y-3">
+                            <div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>
+                        </div>
+                    </div>`;
+                try { lucide.createIcons(); } catch (_) {}
 
-  const dateInput = document.getElementById('schedule-date');
-  const userSelect = document.getElementById('schedule-user');
-  const rowsEl = document.getElementById('schedule-rows');
-  // 哨點選擇已移除
+                const userSelect = document.getElementById('user-select');
+                const dateInput = document.getElementById('record-date');
 
-  // 本地使用者清單，避免依賴 pageState
-  let scheduleUsers = [];
-  const getUserById = (uid) => {
-    const fromLocal = scheduleUsers.find(x => x.id === uid);
-    const fromPageState = (window.pageState?.communityUsers || []).find(x => x.id === uid);
-    return fromLocal || fromPageState || null;
-  };
-  const getUserNameById = (uid) => {
-    const u = getUserById(uid);
-    return u ? (u.name || u.displayName || u.id) : (uid || '未指派');
-  };
-  const getUserTitleById = (uid) => {
-    const u = getUserById(uid);
-    return u ? ((u.jobTitle || u.applicationTitle || u.role || '') + '') : '';
-  };
+                const loadUsersOptions = async () => {
+                    const db = window.__db;
+                    const { collection, getDocs } = window.__fs || {};
+                    const selectedCommunityId = state.currentCommunity?.id || window.pageState?.selectedCommunityId || null;
+                    const selectedCommunityCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
+                    const userInCurrentCommunity = (u) => {
+                        const ids = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
+                        const codesArr = Array.isArray(u.serviceCommunityCodes) ? u.serviceCommunityCodes : [];
+                        const codeOne = (u.serviceCommunityCode || '').trim();
+                        const byIdMatch = selectedCommunityId ? ids.includes(selectedCommunityId) : false;
+                        const byCodeMatch = selectedCommunityCode ? (codesArr.includes(selectedCommunityCode) || codeOne === selectedCommunityCode) : false;
+                        return byIdMatch || byCodeMatch;
+                    };
 
-  const roleOrder = { '總幹事': 0, '秘書': 1, '保全': 2, '清潔': 3, '機電': 4 };
-  const toDate = (tsOrDate) => tsOrDate?.toDate?.() || (tsOrDate instanceof Date ? tsOrDate : new Date(tsOrDate));
-  const fmtHM = (date) => {
-    if (!date || isNaN(date.getTime())) return '';
-    return `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
-  };
-  const getStatusBgColor = (typeOrText) => {
-    const s = String(typeOrText || '').toLowerCase();
-    if (s.includes('上班') || s.includes('返回') || s.includes('在辦')) return 'bg-green-100 text-green-800';
-    if (s.includes('下班')) return 'bg-red-100 text-red-800';
-    if (s.includes('外出') || s.includes('抵達') || s.includes('離開')) return 'bg-blue-100 text-blue-800';
-    if (s.includes('請假')) return 'bg-orange-100 text-orange-800';
-    if (s.includes('特殊勤務') || s.includes('現金班')) return 'bg-indigo-100 text-indigo-800';
-    return 'bg-gray-100 text-gray-800';
-  };
+                    let users = [];
+                    if (Array.isArray(window.pageState?.communityUsers) && window.pageState.communityUsers.length) {
+                        users = window.pageState.communityUsers.slice();
+                    } else if (db && collection && getDocs) {
+                        try {
+                            const snap = await getDocs(collection(db, 'users'));
+                            snap.forEach(d => { const data = d.data(); users.push({ id: d.id, name: data.name || data.displayName || d.id, ...data }); });
+                        } catch (e) { console.warn('載入使用者失敗', e); }
+                        users = users.filter(userInCurrentCommunity);
+                    }
 
-  const ensureUsersOptions = async () => {
-    const { collection, getDocs } = window.__fs || {};
-    const db = window.__db;
-    // 依目前選定社區判斷成員歸屬
-    const selectedCommunityId = state.currentCommunity?.id || window.pageState?.selectedCommunityId || null;
-    const selectedCommunityCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
-    const userInCurrentCommunity = (u) => {
-      const ids = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
-      const codesArr = Array.isArray(u.serviceCommunityCodes) ? u.serviceCommunityCodes : [];
-      const codeOne = (u.serviceCommunityCode || '').trim();
-      const byIdMatch = selectedCommunityId ? ids.includes(selectedCommunityId) : false;
-      const byCodeMatch = selectedCommunityCode ? (codesArr.includes(selectedCommunityCode) || codeOne === selectedCommunityCode) : false;
-      return byIdMatch || byCodeMatch;
-    };
-    // 優先使用 pageState 已載入的社區使用者
-    if (Array.isArray(window.pageState?.communityUsers) && window.pageState.communityUsers.length) {
-      // 頁面已載入的社區人員名單（已是社區帳號清單）
-      scheduleUsers = window.pageState.communityUsers.slice();
-    } else if (db && collection && getDocs) {
-      // 後援：從 users 直接載入
-      try {
-        const snap = await getDocs(collection(db, 'users'));
-        scheduleUsers = [];
-        snap.forEach(d => {
-          const data = d.data();
-          scheduleUsers.push({ id: d.id, name: data.name || data.displayName || d.id, ...data });
-        });
-      } catch (e) {
-        console.warn('載入使用者失敗', e);
-      }
-    }
+                    users.sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'zh-Hant')).forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = u.id; opt.textContent = u.name || u.displayName || u.id;
+                        userSelect.appendChild(opt);
+                    });
+                    if (params && params.selectedUserId) userSelect.value = params.selectedUserId;
+                };
 
-    // 若是後援載入，需過濾為「僅此社區帳號清單」
-    if (!Array.isArray(window.pageState?.communityUsers) || !window.pageState.communityUsers.length) {
-      scheduleUsers = scheduleUsers.filter(userInCurrentCommunity);
-    }
+                const loadRecords = () => {
+                    const selectedUserId = userSelect.value || 'all';
+                    const selectedDateStr = dateInput.value || todayIso;
+                    renderAttendanceRecordsList('attendance-records-list', selectedUserId, selectedDateStr);
+                };
 
-    // 僅保留「總幹事、秘書、保全、清潔、機電」
-    const allowedRoles = new Set(['總幹事','秘書','保全','清潔','機電']);
-    const filteredUsers = scheduleUsers.filter(u => allowedRoles.has((u.jobTitle || u.applicationTitle || u.role || '').trim()));
-    filteredUsers.sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'zh-Hant')).forEach(u => {
-      const opt = document.createElement('option');
-      opt.value = u.id; opt.textContent = u.name || u.displayName || u.id;
-      userSelect.appendChild(opt);
-    });
-    if (params && params.selectedUserId) userSelect.value = params.selectedUserId;
-  };
-
-  // 取得哨點名稱（優先使用 pageState 的 posts，後援查詢 posts 集合）
-  let postNamesById = {};
-  const ensurePostNames = async () => {
-    try {
-      if (Object.keys(postNamesById).length) return;
-      const cid = state.currentCommunity?.id || window.pageState?.selectedCommunityId || null;
-      // 先用已載入的 posts
-      if (Array.isArray(window.pageState?.posts) && window.pageState.posts.length) {
-        window.pageState.posts.forEach(p => { postNamesById[p.id] = p.name || '未命名哨點'; });
-        return;
-      }
-      const { collection, getDocs } = window.__fs || {};
-      const db = window.__db;
-      if (db && collection && getDocs && cid) {
-        const snap = await getDocs(collection(db, 'communities', cid, 'posts'));
-        snap.forEach(d => { const data = d.data() || {}; postNamesById[d.id] = data.name || '未命名哨點'; });
-      }
-    } catch(_) {}
-  };
-
-  const computeStatusText = (now, start, end, startRec, endRec, cashShift) => {
-    try {
-      if (cashShift === true) return '轉現金班';
-      if (now < start) return '尚未到上班時間';
-      if (!startRec) return '未打上班卡';
-      if (now < end) return '正常上班';
-      if (endRec) return '正常下班';
-      return '未打下班卡';
-    } catch(_) { return '未打卡'; }
-  };
-
-  const renderList = async () => {
-    const iso = dateInput.value || todayIso;
-    const communityId = state.currentCommunity?.id || window.pageState?.selectedCommunityId || null;
-    const { collection, getDocs, query, where, Timestamp } = window.__fs || {};
-    const db = window.__db;
-    if (!communityId || !collection || !getDocs) {
-      rowsEl.innerHTML = `<tr><td colspan="8" class="px-3 py-3 text-center text-red-600">資料庫或社區尚未就緒</td></tr>`;
-      return;
-    }
-
-    rowsEl.innerHTML = `<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">正在載入當日排班...</td></tr>`;
-
-    // 讀取當日所有哨點的排班（postSchedules）
-    const schedulesRef = collection(db, 'communities', communityId, 'postSchedules');
-    const snap = await getDocs(query(schedulesRef, where('dateIso', '==', iso)));
-    const shifts = [];
-    snap.forEach(d => {
-      const data = d.data();
-      const postId = data.postId;
-      const arr = Array.isArray(data.shifts) ? data.shifts : [];
-      arr.forEach((s, idx) => {
-        shifts.push({
-          role: s.role || '保全',
-          assignees: Array.isArray(s.assignees) ? s.assignees : [],
-          startStr: s.start || '07:00',
-          endStr: s.end || '19:00',
-          endDateIso: s.endDateIso || iso,
-          cashShift: s.cashShift === true,
-          docId: d.id,
-          postId,
-          dateIso: iso,
-          shiftIndex: idx
-        });
-      });
-    });
-
-    // 篩選人員（若選擇特定人員，只顯示包含該人員之排班）
-    const selectedUserId = userSelect.value;
-    // 哨點選單已移除，改為顯示所有排班（不再依哨點篩選）
-
-    // 先依人員篩選
-    let filtered = selectedUserId === 'all' ? shifts.slice() : shifts.filter(s => s.assignees.includes(selectedUserId));
-
-    // 不再依哨點篩選，保留依人員的篩選（顯示全社區排班）
-
-    // 讀取當日打卡記錄
-    const startOfDay = new Date(`${iso}T00:00:00`);
-    const endOfDay = new Date(`${iso}T23:59:59`);
-    const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
-    const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
-    const clockRef = collection(db, 'clockInRecords');
-    const clockSnap = await getDocs(query(clockRef, where('timestamp', '>=', startTS), where('timestamp', '<=', endTS)));
-    const recsByUser = {};
-    clockSnap.forEach(dd => {
-      const r = { id: dd.id, ...dd.data() };
-      if (!recsByUser[r.userId]) recsByUser[r.userId] = [];
-      recsByUser[r.userId].push(r);
-    });
-
-    // 按角色排序
-    filtered.sort((a,b) => {
-      const ao = roleOrder[a.role] ?? 999, bo = roleOrder[b.role] ?? 999;
-      if (ao !== bo) return ao - bo;
-      const an = (a.assignees[0] ? getUserNameById(a.assignees[0]) : ''), bn = (b.assignees[0] ? getUserNameById(b.assignees[0]) : '');
-      return an.localeCompare(bn, 'zh-Hant');
-    });
-
-    const now = new Date();
-    const rows = filtered.map(s => {
-      const assId = s.assignees[0] || '';
-      const assUser = getUserById(assId);
-      const assName = assId ? getUserNameById(assId) : '未指派';
-      const start = new Date(`${s.dateIso}T${s.startStr}:00`);
-      const end = new Date(`${s.endDateIso}T${s.endStr}:00`);
-      const userRecs = recsByUser[assId] || [];
-      const startRec = userRecs.filter(r => (r.type === '上班')).sort((a,b)=> toDate(a.timestamp) - toDate(b.timestamp))[0] || null;
-      const endRec = userRecs.filter(r => (r.type === '下班')).sort((a,b)=> toDate(b.timestamp) - toDate(a.timestamp))[0] || null;
-      const startTimeDisp = startRec ? fmtHM(toDate(startRec.timestamp)) : '';
-      const endTimeDisp = endRec ? fmtHM(toDate(endRec.timestamp)) : '';
-      const statusText = computeStatusText(now, start, end, startRec, endRec, s.cashShift);
-
-      const recordInfo = (() => {
-        const sUpBy = startRec?.updatedBy || null, eUpBy = endRec?.updatedBy || null;
-        const sUpAt = startRec?.updatedAt ? toDate(startRec.updatedAt) : null;
-        const eUpAt = endRec?.updatedAt ? toDate(endRec.updatedAt) : null;
-        const maxAt = (!sUpAt && !eUpAt) ? null : (!sUpAt ? eUpAt : (!eUpAt ? sUpAt : (sUpAt > eUpAt ? sUpAt : eUpAt)));
-        const maxBy = (maxAt === sUpAt) ? sUpBy : eUpBy;
-        const byName = maxBy ? getUserNameById(maxBy) : '';
-        return maxAt ? `${byName} @ ${maxAt.toLocaleString('zh-TW', { hour12: false })}` : '';
-      })();
-
-      return `
-        <tr data-doc-id="${s.docId}" data-shift-index="${s.shiftIndex}" data-assignee-id="${assId}" data-start-record-id="${startRec?.id||''}" data-end-record-id="${endRec?.id||''}">
-          <td class="px-3 py-2 whitespace-nowrap">${s.role}</td>
-          <td class="px-3 py-2 whitespace-nowrap">${assName}</td>
-          <td class="px-3 py-2 whitespace-nowrap">${s.dateIso} ${s.startStr}</td>
-          <td class="px-3 py-2 whitespace-nowrap">
-            <div class="flex items-center gap-2">
-              <input type="time" class="start-time-input px-2 py-1 border rounded" value="${startTimeDisp}" placeholder="--:--" />
-              <button class="save-start-time bg-yellow-500 text-white px-2 py-1 rounded text-xs"><i data-lucide="save"></i> 儲存</button>
-            </div>
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap">${s.endDateIso} ${s.endStr}</td>
-          <td class="px-3 py-2 whitespace-nowrap">
-            <div class="flex items-center gap-2">
-              <input type="time" class="end-time-input px-2 py-1 border rounded" value="${endTimeDisp}" placeholder="--:--" />
-              <button class="save-end-time bg-yellow-500 text-white px-2 py-1 rounded text-xs"><i data-lucide="save"></i> 儲存</button>
-            </div>
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap">
-            <span class="px-2 py-0.5 rounded ${getStatusBgColor(statusText)}">${statusText}</span>
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap">
-            <div class="flex items-center gap-2">
-              <button class="manual-clock-in bg-green-600 text-white px-2 py-1 rounded text-xs"><i data-lucide="log-in"></i> 手動上班打卡</button>
-              <button class="manual-clock-out bg-red-600 text-white px-2 py-1 rounded text-xs"><i data-lucide="log-out"></i> 手動下班打卡</button>
-              <button class="row-leave-apply bg-orange-500 text-white px-2 py-1 rounded text-xs"><i data-lucide="calendar-days"></i> 請假申請</button>
-              <button class="row-share bg-amber-500 text-white px-2 py-1 rounded text-xs"><i data-lucide="share-2"></i> 分享</button>
-              <span class="text-xs text-gray-500">${recordInfo}</span>
-            </div>
-          </td>
-        </tr>`;
-    });
-
-    rowsEl.innerHTML = rows.length ? rows.join('') : `<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">當日尚無排班</td></tr>`;
-    try { lucide.createIcons(); } catch (_) {}
-
-    bindRowEvents();
-  };
-
-  const bindRowEvents = () => {
-    const { addDoc, collection, Timestamp, serverTimestamp, updateDoc, doc, getDoc, setDoc } = window.__fs || {};
-    const db = window.__db;
-
-    const parseTimeInput = (iso, hm) => {
-      if (!iso || !hm) return null;
-      const dt = new Date(`${iso}T00:00:00`);
-      const [hh, mm] = hm.split(':');
-      dt.setHours(parseInt(hh,10)||0, parseInt(mm,10)||0, 0, 0);
-      return dt;
-    };
-
-    const updateClockTime = async (assigneeId, type, iso, hm, existingRecordId = null) => {
-      if (!assigneeId || !type || !iso || !hm) { showToast('時間無效', true); return; }
-      const user = window.__auth?.currentUser;
-      const dt = parseTimeInput(iso, hm);
-      if (!dt) { showToast('時間無效', true); return; }
-          try {
-            if (existingRecordId) {
-              await updateDoc(doc(db, 'clockInRecords', existingRecordId), {
-                timestamp: Timestamp.fromDate(dt),
-                updatedBy: user?.uid || '',
-                updatedAt: Timestamp.fromDate(new Date())
-              });
-              showToast('已更新時間');
-            } else {
-              await addDoc(collection(db, 'clockInRecords'), {
-                userId: assigneeId,
-                type: type,
-                timestamp: Timestamp.fromDate(dt),
-                location: state.currentLocation ? { latitude: state.currentLocation.lat, longitude: state.currentLocation.lng } : null,
-                photoUrls: [],
-                descriptions: [],
-                deviceId: state.deviceId || 'manual',
-                locationName: state.currentCommunity?.name || '',
-                dutyType: '',
-                isAutomatic: false,
-                communityId: state.currentCommunity?.id || null,
-                communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null,
-                createdAt: serverTimestamp()
-              });
-              showToast('已新增打卡');
+                loadUsersOptions().then(loadRecords);
+                userSelect.addEventListener('change', loadRecords);
+                dateInput.addEventListener('change', loadRecords);
             }
-          } catch (e) {
-        console.error('updateClockTime error', e);
-        showToast('更新失敗：請檢查權限或格式', true);
-      }
-    };
-
-    const manualClock = async (row, type) => {
-      const assigneeId = row.getAttribute('data-assignee-id') || '';
-      try {
-        await addDoc(collection(db, 'clockInRecords'), {
-          userId: assigneeId,
-          type: type,
-          timestamp: Timestamp.fromDate(new Date()),
-          location: state.currentLocation ? { latitude: state.currentLocation.lat, longitude: state.currentLocation.lng } : null,
-          photoUrls: [],
-          descriptions: [],
-          deviceId: state.deviceId || 'manual',
-          locationName: state.currentCommunity?.name || '',
-          dutyType: '',
-          isAutomatic: false,
-          communityId: state.currentCommunity?.id || null,
-          communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null,
-          createdAt: serverTimestamp()
-        });
-        showToast(type === '上班' ? '已手動上班打卡' : '已手動下班打卡');
-        await renderList();
-      } catch (e) { console.error('manual clock error', e); showToast('手動打卡失敗', true); }
-    };
-
-    // 綁定按鈕
-    rowsEl.querySelectorAll('tr').forEach(tr => {
-      tr.querySelector('.save-start-time')?.addEventListener('click', async () => {
-        const assigneeId = tr.getAttribute('data-assignee-id') || '';
-        const iso = dateInput.value;
-        const hm = tr.querySelector('.start-time-input')?.value || '';
-        const existingRecordId = tr.getAttribute('data-start-record-id') || null;
-        await updateClockTime(assigneeId, '上班', iso, hm, existingRecordId);
-        await renderList();
-      });
-      tr.querySelector('.save-end-time')?.addEventListener('click', async () => {
-        const assigneeId = tr.getAttribute('data-assignee-id') || '';
-        const iso = dateInput.value;
-        const hm = tr.querySelector('.end-time-input')?.value || '';
-        const existingRecordId = tr.getAttribute('data-end-record-id') || null;
-        await updateClockTime(assigneeId, '下班', iso, hm, existingRecordId);
-        await renderList();
-      });
-      tr.querySelector('.manual-clock-in')?.addEventListener('click', () => manualClock(tr, '上班'));
-      tr.querySelector('.manual-clock-out')?.addEventListener('click', () => manualClock(tr, '下班'));
-      tr.querySelector('.row-leave-apply')?.addEventListener('click', () => {
-        try { openTempLeaveModal(); } catch (err) { showToast('無法開啟請假申請', true); }
-      });
-      tr.querySelector('.row-share')?.addEventListener('click', async () => {
-        try {
-          const docId = tr.getAttribute('data-doc-id');
-          const shiftIndex = parseInt(tr.getAttribute('data-shift-index'), 10);
-          const dref = doc(db,'communities', state.currentCommunity?.id, 'postSchedules', docId);
-          const dsnap = await getDoc(dref);
-          const data = dsnap.exists() ? dsnap.data() : null;
-          const shifts = Array.isArray(data?.shifts) ? data.shifts : [];
-          const newShifts = shifts.map((sh,i)=> i===shiftIndex ? { ...sh, cashShift: true } : sh);
-          await setDoc(dref, { ...data, shifts: newShifts, updatedAt: Timestamp.fromDate(new Date()) });
-          showToast('已標記為現金班');
-        } catch (e) { console.error('share cash shift error', e); showToast('分享失敗', true); }
-      });
-    });
-  };
-
-  ensureUsersOptions().then(renderList);
-  userSelect.addEventListener('change', renderList);
-  dateInput.addEventListener('change', renderList);
-  // 哨點下拉已移除
-}
 
 function renderTrackingLeave(container) {
                 container.innerHTML = `
