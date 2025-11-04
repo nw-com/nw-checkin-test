@@ -10745,11 +10745,11 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 try {
                     if (selectedUserId === 'all') {
                         const base = [where('timestamp', '>=', startTS), where('timestamp', '<=', endTS)];
-                        if (currentComm?.id) base.push(where('communityId','==', currentComm.id));
+                        // 不在查詢層面加 communityId；改以前端 recordMatchesCommunity 過濾
                         q = query(recordsRef, ...base);
                     } else {
                         const base = [where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS)];
-                        if (currentComm?.id) base.push(where('communityId','==', currentComm.id));
+                        // 不在查詢層面加 communityId；改以前端 recordMatchesCommunity 過濾
                         q = query(recordsRef, ...base);
                     }
                 } catch (_) {
@@ -10798,8 +10798,9 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 });
 
                 container.innerHTML = '';
+                // 僅在「全部人員」模式套用白名單；選擇特定人員時不過濾
                 filteredRecords
-                    .filter(r => !allowedUserIds || allowedUserIds.includes(r.userId))
+                    .filter(r => (selectedUserId === 'all' ? (!allowedUserIds || allowedUserIds.includes(r.userId)) : true))
                     .sort((a,b) => {
                         const timeA = a.timestamp?.toDate?.() || new Date(0);
                         const timeB = b.timestamp?.toDate?.() || new Date(0);
