@@ -11495,6 +11495,21 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         const snap = await getDocs(collection(db, 'users'));
                         snap.forEach(d => { const data = d.data(); communityUsers.push({ id: d.id, name: data.name || data.displayName || d.id, ...data }); });
                         communityUsers = communityUsers.filter(userInCurrentCommunity);
+                        // 僅保留指定職務（總幹事、秘書、保全、清潔、機電）
+                        const allowedRoleTokens = ['總幹事','秘書','保全','清潔','機電'];
+                        const norm = (s) => (s || '').toString().trim();
+                        const toArray = (x) => Array.isArray(x) ? x : (x ? [x] : []);
+                        const matchAllowedRole = (u) => {
+                            const buckets = [
+                                u.role, u.jobTitle, u.applicationTitle, u.position, u.title, u.department, u.category, u.type,
+                                ...(toArray(u.roles)), ...(toArray(u.serviceRoles)), ...(toArray(u.tags)),
+                                norm(u.dutyTitle), norm(u.staffTitle), norm(u.workTitle)
+                            ].map(norm).filter(Boolean);
+                            if (buckets.length === 0) return false;
+                            const joined = buckets.join(' ');
+                            return allowedRoleTokens.some(tok => joined.includes(tok));
+                        };
+                        communityUsers = communityUsers.filter(matchAllowedRole);
                     } catch (e) { console.warn('載入所有社區使用者失敗', e); }
 
                     // 讀取週五值班名單（一次）
@@ -11598,7 +11613,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
 
                         // 為該使用者建立一個區塊與表格
                         const section = document.createElement('div');
-                        section.className = 'mb-6';
+                        section.className = 'mb-6 monthly-report-section';
                         section.innerHTML = `
                             <h2 class="text-xl font-bold mb-2 text-center">${ymTag}出勤紀錄-${user.name || user.id}</h2>
                             <table class="w-full border border-gray-300 text-sm">
@@ -11700,7 +11715,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         const style = document.createElement('style');
                         style.id = 'monthly-report-print-style';
                         style.textContent = `
-                        @page { size: A4; margin: 10mm; }
+                        @page { size: A4 portrait; margin: 10mm; }
                         @media print {
                             body { -webkit-print-color-adjust: exact; }
                             body > * { display: none !important; }
@@ -11709,7 +11724,9 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                             #monthly-report-container .p-4.flex-1 { padding: 0 !important; }
                             #month-report-content { width: 190mm !important; margin: 0 auto !important; }
                             table { border-collapse: collapse; }
-                            th, td { font-size: 11px; line-height: 1.2; padding: 2px 4px; }
+                            th, td { font-size: 10px; line-height: 1.15; padding: 2px 4px; }
+                            .monthly-report-section { page-break-after: always; break-after: page; height: 270mm; overflow: hidden; }
+                            .monthly-report-section:last-child { page-break-after: auto; }
                         }
                         `;
                         document.head.appendChild(style);
