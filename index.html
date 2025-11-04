@@ -10729,6 +10729,18 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
             }
 
             // 共用：出勤紀錄列表渲染（支援指定用戶白名單）
+            // 先全域掛載 getStatusBgColor，避免函式尚未宣告導致 ReferenceError
+            if (typeof window.getStatusBgColor !== 'function') {
+                window.getStatusBgColor = function(typeOrText) {
+                    const s = String(typeOrText || '').toLowerCase();
+                    if (s.includes('上班') || s.includes('返回') || s.includes('在辦')) return 'bg-green-100 text-green-800';
+                    if (s.includes('下班')) return 'bg-red-100 text-red-800';
+                    if (s.includes('外出') || s.includes('抵達') || s.includes('離開')) return 'bg-blue-100 text-blue-800';
+                    if (s.includes('請假')) return 'bg-orange-100 text-orange-800';
+                    if (s.includes('特殊勤務')) return 'bg-indigo-100 text-indigo-800';
+                    return 'bg-gray-100 text-gray-800';
+                };
+            }
             async function renderAttendanceRecordsList(containerId, selectedUserId, selectedDateStr, allowedUserIds = null) {
                 const container = document.getElementById(containerId);
                 const selectedDate = new Date(selectedDateStr);
