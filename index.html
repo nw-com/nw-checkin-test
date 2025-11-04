@@ -11368,6 +11368,9 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                                 <label for="record-date" class="text-sm font-medium">日期:</label>
                                 <input type="date" id="record-date" value="${params.selectedDate || todayIso}" class="border border-gray-300 rounded-md px-2 py-1" />
                             </div>
+                            <div class="flex items-center">
+                                <button id="generate-all-month-report" class="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm">全部人員月報表</button>
+                            </div>
                         </div>
                         <div id="attendance-records-list" class="space-y-3">
                             <div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>
@@ -11426,6 +11429,295 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 loadUsersOptions().then(loadRecords);
                 userSelect.addEventListener('change', loadRecords);
                 dateInput.addEventListener('change', loadRecords);
+
+                // 全部人員月報表：選擇月份彈窗與生成
+                const btnAllReport = document.getElementById('generate-all-month-report');
+                btnAllReport?.addEventListener('click', () => openAllMonthReportModal());
+
+                function openAllMonthReportModal() {
+                    const now = new Date();
+                    const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+                    const modal = document.createElement('div');
+                    modal.className = 'fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50';
+                    modal.innerHTML = `
+                        <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-md overflow-hidden">
+                            <div class="px-4 py-3 bg-indigo-600 text-white flex items-center justify-between">
+                                <h3 class="font-semibold">選擇月份</h3>
+                                <button class="close-month-modal">
+                                    <i data-lucide="x" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                            <div class="p-4 space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">月份</label>
+                                    <input type="month" id="all-month-input" value="${ym}" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                </div>
+                                <div class="flex justify-end space-x-2">
+                                    <button class="close-month-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">取消</button>
+                                    <button id="gen-all-month-report" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">生成全部月報表</button>
+                                </div>
+                            </div>
+                        </div>`;
+                    document.body.appendChild(modal);
+                    try { lucide.createIcons(); } catch(e) {}
+                    modal.querySelectorAll('.close-month-modal').forEach(btn => btn.addEventListener('click', () => document.body.removeChild(modal)));
+                    document.getElementById('gen-all-month-report').addEventListener('click', async () => {
+                        const mi = document.getElementById('all-month-input').value;
+                        if (!mi) { showToast('請選擇月份', true); return; }
+                        document.body.removeChild(modal);
+                        await generateAllMonthlyReport(mi);
+                    });
+                }
+
+                async function generateAllMonthlyReport(ymStr) {
+                    const [yearStr, monthStr] = ymStr.split('-');
+                    const year = parseInt(yearStr, 10); const monthIndex = parseInt(monthStr, 10) - 1; // 0-based
+                    const start = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+                    const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+
+                    const { collection, where, query, getDocs, Timestamp, doc, getDoc } = window.__fs; const db = window.__db;
+                    const startTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, monthIndex, 1)) : start;
+                    const endTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)) : end;
+
+                    // 讀取目前社區的所有帳號（不限制角色）
+                    const selectedCommunityId = state.currentCommunity?.id || window.pageState?.selectedCommunityId || null;
+                    const selectedCommunityCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
+                    const userInCurrentCommunity = (u) => {
+                        const ids = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
+                        const codesArr = Array.isArray(u.serviceCommunityCodes) ? u.serviceCommunityCodes : [];
+                        const codeOne = (u.serviceCommunityCode || '').trim();
+                        const byIdMatch = selectedCommunityId ? ids.includes(selectedCommunityId) : false;
+                        const byCodeMatch = selectedCommunityCode ? (codesArr.includes(selectedCommunityCode) || codeOne === selectedCommunityCode) : false;
+                        return byIdMatch || byCodeMatch;
+                    };
+                    let communityUsers = [];
+                    try {
+                        const snap = await getDocs(collection(db, 'users'));
+                        snap.forEach(d => { const data = d.data(); communityUsers.push({ id: d.id, name: data.name || data.displayName || d.id, ...data }); });
+                        communityUsers = communityUsers.filter(userInCurrentCommunity);
+                    } catch (e) { console.warn('載入所有社區使用者失敗', e); }
+
+                    // 讀取週五值班名單（一次）
+                    let fridayDutyRoster = {};
+                    try {
+                        const settingsRef = doc(db, 'settings', 'general');
+                        const settingsSnap = await getDoc(settingsRef);
+                        fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
+                    } catch (e) { console.warn('讀取值班名單失敗', e); }
+
+                    // 讀取本月排班資料（一次）
+                    let schedulesByDate = {};
+                    try {
+                        const sq = query(
+                            collection(db, 'postSchedules'),
+                            where('dateTS', '>=', startTS),
+                            where('dateTS', '<=', endTS)
+                        );
+                        const ss = await getDocs(sq);
+                        ss.forEach(docSnap => {
+                            const data = docSnap.data();
+                            const di = data.dateIso;
+                            if (!di) return;
+                            if (!schedulesByDate[di]) schedulesByDate[di] = [];
+                            schedulesByDate[di].push(data);
+                        });
+                    } catch(e) { console.warn('讀取排班資料失敗', e); }
+
+                    const norm = (s) => (s || '').trim();
+                    const hasScheduleForUser = (dateIso, user) => {
+                        const docs = schedulesByDate[dateIso];
+                        if (!Array.isArray(docs) || docs.length === 0) return false;
+                        const uid = user.id;
+                        const myName = (user?.name || user?.displayName || user?.email || '').trim();
+                        return docs.some(sd => {
+                            if (sd?.isScheduledDay === true) return true; // 全體排班
+                            const shifts = Array.isArray(sd?.shifts) ? sd.shifts : [];
+                            return shifts.some(s => {
+                                if (!s) return false;
+                                if (typeof s === 'string') return norm(s) === myName;
+                                if (typeof s === 'object') return (norm(s.name) === myName) || (norm(s.assigneeName) === myName) || (s.userId === uid) || (s.assigneeId === uid);
+                                return false;
+                            });
+                        });
+                    };
+
+                    // 準備列印容器（多使用者）
+                    const old = document.getElementById('monthly-report-container');
+                    if (old) old.remove();
+                    const container = document.createElement('div');
+                    container.id = 'monthly-report-container';
+                    container.className = 'fixed inset-0 z-50 bg-white';
+                    const ymTag = `${year}-${String(monthIndex+1).padStart(2,'0')}`;
+                    container.innerHTML = `
+                        <div class="bg-white w-full h-full flex flex-col">
+                            <div class="px-4 py-3 bg-indigo-600 text-white flex items-center justify-between shrink-0">
+                                <h3 class="font-semibold">${ymTag}出勤紀錄-全部人員</h3>
+                                <div class="space-x-2">
+                                    <button id="print-month-report" class="px-3 py-1.5 bg-white text-indigo-700 rounded hover:bg-gray-100">列印</button>
+                                    <button id="close-month-report" class="px-3 py-1.5 bg-white text-indigo-700 rounded hover:bg-gray-100">關閉</button>
+                                </div>
+                            </div>
+                            <div class="p-4 flex-1 overflow-auto">
+                                <div id="month-report-content" class="mx-auto" style="width:190mm">
+                                    <div id="month-report-inner" style="transform-origin: top left;"></div>
+                                </div>
+                            </div>
+                        </div>`;
+                    document.body.appendChild(container);
+
+                    const inner = container.querySelector('#month-report-inner');
+                    const weekdayZh = ['日','一','二','三','四','五','六'];
+
+                    for (const user of communityUsers) {
+                        // 讀取該使用者的月資料
+                        const allRecords = [];
+                        try {
+                            const rq = query(
+                                collection(db, 'clockInRecords'),
+                                where('userId', '==', user.id),
+                                where('timestamp', '>=', startTS),
+                                where('timestamp', '<=', endTS)
+                            );
+                            const rs = await getDocs(rq);
+                            rs.forEach(d => allRecords.push({ id: d.id, ...d.data() }));
+                        } catch(e) { console.warn('讀取打卡失敗', user.id, e); }
+
+                        let leaves = [];
+                        try {
+                            const lq = query(collection(db, 'leaves'), where('userId','==', user.id));
+                            const ls = await getDocs(lq);
+                            ls.forEach(docSnap => leaves.push({ id: docSnap.id, ...docSnap.data() }));
+                        } catch(e) { console.warn('讀取請假失敗', user.id, e); }
+
+                        let duties = [];
+                        try {
+                            const dq = query(collection(db, 'specialDuties'), where('userId','==', user.id));
+                            const ds = await getDocs(dq);
+                            ds.forEach(docSnap => duties.push({ id: docSnap.id, ...docSnap.data() }));
+                        } catch(e) { console.warn('讀取特殊勤務失敗', user.id, e); }
+
+                        // 為該使用者建立一個區塊與表格
+                        const section = document.createElement('div');
+                        section.className = 'mb-6';
+                        section.innerHTML = `
+                            <h2 class="text-xl font-bold mb-2 text-center">${ymTag}出勤紀錄-${user.name || user.id}</h2>
+                            <table class="w-full border border-gray-300 text-sm">
+                                <thead>
+                                    <tr class="bg-gray-100">
+                                        <th class="border px-2 py-1">日期</th>
+                                        <th class="border px-2 py-1">星期</th>
+                                        <th class="border px-2 py-1">上班打卡時間</th>
+                                        <th class="border px-2 py-1">下班打卡時間</th>
+                                        <th class="border px-2 py-1">總時數</th>
+                                        <th class="border px-2 py-1">備註</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>`;
+                        inner.appendChild(section);
+                        const bodyEl = section.querySelector('tbody');
+
+                        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+                        for (let d = 1; d <= daysInMonth; d++) {
+                            const dayStart = new Date(year, monthIndex, d, 0, 0, 0, 0);
+                            const dayEnd = new Date(year, monthIndex, d, 23, 59, 59, 999);
+                            const w = dayStart.getDay();
+                            const dateLabel = `${year}-${String(monthIndex+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+                            const recs = allRecords.filter(r => {
+                                const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null);
+                                if (!ts) return false;
+                                return ts >= dayStart && ts <= dayEnd;
+                            }).sort((a,b) => {
+                                const ta = a.timestamp?.toDate?.() || (a.timestamp ? new Date(a.timestamp) : new Date(0));
+                                const tb = b.timestamp?.toDate?.() || (b.timestamp ? new Date(b.timestamp) : new Date(0));
+                                return ta - tb;
+                            });
+
+                            let startRecord = recs.find(r => (r.type === '上班')) || recs.find(r => (r.type === '外出')) || null;
+                            const isEndType = (r) => {
+                                const t = r?.type || '';
+                                return t === '下班' || (typeof t === 'string' && t.includes('下班')) || r?.auto === true || r?.autoClockOut === true || r?.isAuto === true;
+                            };
+                            let endRecord = recs.slice().reverse().find(isEndType) || null;
+                            const fmt = (dt) => dt ? `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : '';
+                            const startTime = startRecord ? (startRecord.timestamp?.toDate?.() || new Date(startRecord.timestamp)) : null;
+                            const endTime = endRecord ? (endRecord.timestamp?.toDate?.() || new Date(endRecord.timestamp)) : null;
+                            const startText = startTime ? fmt(startTime) : '';
+                            const endText = endTime ? fmt(endTime) : '';
+
+                            let totalHours = '';
+                            if (startTime && endTime && endTime > startTime) {
+                                const diffMs = endTime - startTime;
+                                totalHours = (diffMs / 3600000).toFixed(2);
+                            }
+
+                            let indicators = [];
+                            const nowForReport = new Date();
+                            const todayEndForReport = new Date(nowForReport.getFullYear(), nowForReport.getMonth(), nowForReport.getDate(), 23, 59, 59, 999);
+                            const isFutureDayForNotes = dayStart > todayEndForReport;
+                            const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
+                            if (!isFutureDayForNotes) {
+                                const isDutyBySpecial = duties.some(di => {
+                                    const s = di.startTime?.toDate?.() || (di.startTime ? new Date(di.startTime) : null);
+                                    const e = di.endTime?.toDate?.() || (di.endTime ? new Date(di.endTime) : null);
+                                    if (!s || !e) return false;
+                                    return s < nextDay && e > dayStart;
+                                });
+                                const rosterNamesForDay = fridayDutyRoster[dateLabel] || [];
+                                const isRosterDuty = Array.isArray(rosterNamesForDay) && rosterNamesForDay.some(n => norm(n) === norm(user.name));
+                                const isDuty = isDutyBySpecial || isRosterDuty;
+                                const scheduled = hasScheduleForUser(dateLabel, user);
+                                const hasAnyRecord = recs.length > 0;
+                                const isLeave = leaves.some(l => {
+                                    const s = l.startTime?.toDate?.() || (l.startTime ? new Date(l.startTime) : null);
+                                    const e = l.endTime?.toDate?.() || (l.endTime ? new Date(l.endTime) : null);
+                                    if (!s || !e) return false;
+                                    return s < nextDay && e > dayStart; // overlap
+                                });
+                                if (!scheduled && !isLeave && !isDuty && !hasAnyRecord) {
+                                    indicators.push('排休');
+                                }
+                                if (isLeave) {
+                                    indicators.push('請假');
+                                }
+                            }
+
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td class="border px-2 py-1">${dateLabel}</td>
+                                <td class="border px-2 py-1">${weekdayZh[w]}</td>
+                                <td class="border px-2 py-1">${startText}</td>
+                                <td class="border px-2 py-1">${endText}</td>
+                                <td class="border px-2 py-1">${totalHours}</td>
+                                <td class="border px-2 py-1">${indicators.join('、')}</td>`;
+                            bodyEl.appendChild(tr);
+                        }
+                    }
+
+                    // 注入列印樣式（沿用個人月報表樣式）
+                    if (!document.getElementById('monthly-report-print-style')) {
+                        const style = document.createElement('style');
+                        style.id = 'monthly-report-print-style';
+                        style.textContent = `
+                        @page { size: A4; margin: 10mm; }
+                        @media print {
+                            body { -webkit-print-color-adjust: exact; }
+                            body > * { display: none !important; }
+                            #monthly-report-container { display: block !important; position: static !important; }
+                            #monthly-report-container .px-4.py-3.bg-indigo-600 { display: none !important; }
+                            #monthly-report-container .p-4.flex-1 { padding: 0 !important; }
+                            #month-report-content { width: 190mm !important; margin: 0 auto !important; }
+                            table { border-collapse: collapse; }
+                            th, td { font-size: 11px; line-height: 1.2; padding: 2px 4px; }
+                        }
+                        `;
+                        document.head.appendChild(style);
+                    }
+
+                    container.querySelector('#close-month-report').addEventListener('click', () => container.remove());
+                    container.querySelector('#print-month-report').addEventListener('click', () => { window.print(); });
+                }
             }
 
 function renderTrackingLeave(container) {
