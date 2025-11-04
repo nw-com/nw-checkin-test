@@ -10760,14 +10760,30 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 container.innerHTML = `<div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>`;
                 await ensureAbnormalMarkingConfig();
                 await ensureCommunitiesCache();
-                const querySnapshot = await getDocs(q);
+                let querySnapshot;
+                try {
+                    querySnapshot = await getDocs(q);
+                } catch (err) {
+                    console.warn('getDocs index error, switching to fallback (timestamp-only) query', err);
+                    try {
+                        const q2 = query(recordsRef, where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
+                        querySnapshot = await getDocs(q2);
+                        try { showToast('已使用後備查詢；請於 Firestore 建立複合索引', false); } catch(_) {}
+                    } catch (err2) {
+                        console.error('fallback query failed', err2);
+                        container.innerHTML = `<p class="text-center text-red-600 p-4">讀取出勤紀錄失敗：請稍後再試</p>`;
+                        return;
+                    }
+                }
                 if (querySnapshot.empty) {
                     container.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
                     return;
                 }
                 const records = [];
                 querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
-                const filteredRecords = records.filter(r => recordMatchesCommunity(r, state.currentCommunity));
+                const filteredRecords = records
+                    .filter(r => recordMatchesCommunity(r, state.currentCommunity))
+                    .filter(r => (selectedUserId === 'all' ? true : r.userId === selectedUserId));
                 const usersRef = collection(db, 'users');
                 const usersSnapshot = await getDocs(usersRef);
                 const usersMap = {};
