@@ -515,9 +515,12 @@
             const rcid = (rec.communityId || '').trim();
             const rcode = (rec.communityCode || rec.dutyCommunityCode || '').trim();
             const lname = (rec.locationName || '').trim();
+            // 明確匹配
             if (cid && rcid && rcid === cid) return true;
             if (ccode && rcode && rcode === ccode) return true;
             if (cname && lname && lname.includes(cname)) return true;
+            // 舊紀錄可能沒有社區欄位或地點名稱，避免誤排除
+            if (!rcid && !rcode && !lname) return true;
             return false;
         }
         
@@ -11338,6 +11341,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
 
                 const userSelect = document.getElementById('user-select');
                 const dateInput = document.getElementById('record-date');
+                let allowedIds = [];
 
                 const loadUsersOptions = async () => {
                     const db = window.__db;
@@ -11369,13 +11373,14 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         opt.value = u.id; opt.textContent = u.name || u.displayName || u.id;
                         userSelect.appendChild(opt);
                     });
+                    allowedIds = users.map(u => u.id);
                     if (params && params.selectedUserId) userSelect.value = params.selectedUserId;
                 };
 
                 const loadRecords = () => {
                     const selectedUserId = userSelect.value || 'all';
                     const selectedDateStr = dateInput.value || todayIso;
-                    renderAttendanceRecordsList('attendance-records-list', selectedUserId, selectedDateStr);
+                    renderAttendanceRecordsList('attendance-records-list', selectedUserId, selectedDateStr, allowedIds);
                 };
 
                 loadUsersOptions().then(loadRecords);
