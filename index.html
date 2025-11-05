@@ -410,6 +410,9 @@
             // 自動清理退避（避免權限不足時重複嘗試）
             lastCleanupRun: 0,
             cleanupBackoffMs: 60000,
+            // 單裝置登入心跳控制
+            activeSessionUid: null,
+            sessionHeartbeatHandle: null,
         };
         
         // 初始化本機裝置ID（用於打卡紀錄與首次打卡裝置標記）
@@ -429,6 +432,43 @@
                 state.deviceId = 'unknown-device';
             }
         })();
+
+        // 啟動單裝置登入會話：若偵測到其他裝置於時間窗內活躍，阻止登入並登出
+        async function startSingleDeviceSession(user) {
+            try {
+                const deviceId = state.deviceId || 'unknown-device';
+                const { doc, getDoc, setDoc, serverTimestamp } = window.__fs || {};
+                const db = window.__db;
+                if (!db || !doc || !getDoc || !setDoc) return true;
+                const sRef = doc(db, 'sessions', user.uid);
+                const snap = await getDoc(sRef);
+                const now = Date.now();
+                const THRESHOLD_MS = 2 * 60 * 1000; // 活躍會話時間窗（2分鐘）
+                if (snap.exists()) {
+                    const data = snap.data() || {};
+                    const otherId = (data.deviceId || '').trim();
+                    const updatedAt = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : 0;
+                    const isRecent = updatedAt && (now - updatedAt) < THRESHOLD_MS;
+                    if (otherId && otherId !== deviceId && isRecent) {
+                        showToast('此帳號已在其他裝置使用，請先在原裝置登出或稍候再試', true);
+                        await signOut(auth);
+                        return false;
+                    }
+                }
+                await setDoc(sRef, { deviceId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+                state.activeSessionUid = user.uid;
+                if (state.sessionHeartbeatHandle) clearInterval(state.sessionHeartbeatHandle);
+                state.sessionHeartbeatHandle = setInterval(async () => {
+                    try {
+                        await setDoc(sRef, { updatedAt: serverTimestamp() }, { merge: true });
+                    } catch (_) {}
+                }, 45000);
+                return true;
+            } catch (e) {
+                console.warn('啟動單裝置會話失敗，略過限制：', e);
+                return true;
+            }
+        }
 
         // 角色對應中文標籤
         function roleLabel(role) {
@@ -1358,31 +1398,40 @@
                     bodyEl.classList.remove('bg-red-600');
                     bodyEl.classList.add('bg-gray-100');
                     state.currentUser = user;
-                    const userDocRef = doc(db, "users", user.uid);
-                    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-                        if (docSnap.exists()) {
-                            const wasNotInitialized = !state.currentUserData;
-                            state.currentUserData = { id: user.uid, ...docSnap.data() };
-                            if (wasNotInitialized) {
-                                initializeAppUI();
-                            } else {
-                                updateHeaderAvatar();
+                    startSingleDeviceSession(user).then((ok) => {
+                        if (!ok) return; // 已被阻止登入
+                        const userDocRef = doc(db, "users", user.uid);
+                        const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+                            if (docSnap.exists()) {
+                                const wasNotInitialized = !state.currentUserData;
+                                state.currentUserData = { id: user.uid, ...docSnap.data() };
+                                if (wasNotInitialized) {
+                                    initializeAppUI();
+                                } else {
+                                    updateHeaderAvatar();
+                                }
+                            } else { 
+                                showToast('此帳號尚未初始化，請通知管理員建立人員資料', true);
+                                signOut(auth); 
                             }
-                        } else { 
-                            showToast('此帳號尚未初始化，請通知管理員建立人員資料', true);
-                            signOut(auth); 
-                        }
-                    }, (error) => {
-                        console.error("Error listening to user document:", error);
-                        showToast('讀取用戶資料失敗，請稍後再試', true);
-                        signOut(auth);
+                        }, (error) => {
+                            console.error("Error listening to user document:", error);
+                            showToast('讀取用戶資料失敗，請稍後再試', true);
+                            signOut(auth);
+                        });
+                        state.activeListeners.push(unsubscribe);
                     });
-                    state.activeListeners.push(unsubscribe);
                 } else {
                     bodyEl.classList.remove('bg-gray-100');
                     bodyEl.classList.add('bg-red-600');
                     state.currentUser = null;
                     state.currentUserData = null;
+                    // 清理單裝置心跳
+                    if (state.sessionHeartbeatHandle) {
+                        clearInterval(state.sessionHeartbeatHandle);
+                        state.sessionHeartbeatHandle = null;
+                        state.activeSessionUid = null;
+                    }
                     // 非登入狀態顯示控制
                     if (state.inPasswordResetMode && state.passwordResetOobCode) {
                         renderResetPasswordPage(state.passwordResetOobCode);
