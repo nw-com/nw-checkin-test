@@ -16281,7 +16281,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
 
                     try {
                         // 僅允許安全規則中的打卡類型
-                        const allowedTypes = ['上班','下班'];
+                        const allowedTypes = ['上班','下班','外出','抵達','離開','返回'];
                         if (!allowedTypes.includes(type)) {
                             console.warn('不允許的打卡類型，已取消寫入：', type);
                             showToast('此打卡類型不支援紀錄寫入，請改用對應功能', true);
@@ -16421,11 +16421,14 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                     const tsNow2 = (window.__fs && window.__fs.Timestamp && typeof window.__fs.Timestamp.now === 'function')
                                         ? window.__fs.Timestamp.now()
                                         : new Date();
-                                    await updateDoc(doc(db2, "users", uid2), {
+                                    const fallbackUpdate = {
                                         status: type,
                                         clockInStatus: type,
-                                        lastUpdated: tsNow2
-                                    });
+                                        lastUpdated: tsNow2,
+                                        lastLocation: locValue
+                                    };
+                                    if (type === '上班') { fallbackUpdate.lastClockInTime = tsNow2; }
+                                    await updateDoc(doc(db2, "users", uid2), fallbackUpdate);
                                     console.warn('無法建立 clockInRecords，已改為僅更新使用者狀態');
                                 } catch (e2) {
                                     console.error('回退更新使用者狀態失敗：', e2);
@@ -16457,8 +16460,12 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                         const userUpdateData = {
                             status: type,
                             clockInStatus: type,
-                            lastUpdated: tsNow3
+                            lastUpdated: tsNow3,
+                            lastLocation: locValue
                         };
+                        if (type === '上班') {
+                            userUpdateData.lastClockInTime = tsNow3;
+                        }
                         
                         // 如果是外出打卡，添加外出地點名稱
                         if (type === '外出') {
@@ -16467,9 +16474,12 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                 userUpdateData.outboundLocation = locName2.slice(0, 100);
                             }
                         }
-                        // 外出同步勤務項目（若有）
+                        // 外出同步勤務項目（若有）；返回時清除外出地點
                         if (type === '外出' && state.dutyType) {
                             userUpdateData.dutyType = state.dutyType;
+                        }
+                        if (type === '返回') {
+                            userUpdateData.outboundLocation = null;
                         }
                         
                         try {
