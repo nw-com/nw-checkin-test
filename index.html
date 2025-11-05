@@ -10972,10 +10972,15 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
                 let filteredRecords;
                 if (selectedUserId === 'all') {
-                    // 若有白名單（社區成員），直接以 userId 過濾，避免舊紀錄缺少社區欄位
-                    filteredRecords = (!allowedUserIds || allowedUserIds.length === 0)
-                        ? filterRecordsByCommunityForTracking(records, state.currentCommunity)
+                    // 先以白名單過濾使用者，再嚴格過濾社區（避免跨社區混入）
+                    const baseRecords = (!allowedUserIds || allowedUserIds.length === 0)
+                        ? records
                         : records.filter(r => allowedUserIds.includes(r.userId));
+                    filteredRecords = baseRecords.filter(r => recordMatchesCommunityStrict(r, state.currentCommunity));
+                    if (filteredRecords.length === 0) {
+                        // 嚴格無結果時才回退到名稱比對（處理舊紀錄缺少社區欄位）
+                        filteredRecords = baseRecords.filter(r => recordMatchesCommunityByName(r, state.currentCommunity));
+                    }
                 } else {
                     // 選定人員：僅顯示屬於目前社區的當日紀錄（嚴格比對 Id/Code，不做名稱回退）
                     const userRecords = records.filter(r => r.userId === selectedUserId);
