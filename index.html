@@ -16202,6 +16202,38 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                     stopCamera();
                     showLoading(true);
 
+                    // 最終地理圍欄檢查：上班/下班必須在打卡範圍內
+                    try {
+                        if (type === '上班' || type === '下班') {
+                            const { center, radius } = await fetchCommunityCenterAndRadius();
+                            if (!center || typeof radius !== 'number') {
+                                showToast('尚未設定打卡範圍，請聯絡管理員', true);
+                                showLoading(false);
+                                return;
+                            }
+                            const locToCheck = (location && typeof location.lat === 'number' && typeof location.lng === 'number')
+                                ? location
+                                : (state.currentLocation && typeof state.currentLocation.lat === 'number' && typeof state.currentLocation.lng === 'number')
+                                    ? state.currentLocation
+                                    : null;
+                            if (!locToCheck) {
+                                showToast('無法取得目前位置，請稍後再試', true);
+                                showLoading(false);
+                                return;
+                            }
+                            const dist = calculateDistanceMeters(locToCheck.lat, locToCheck.lng, center.lat, center.lng);
+                            if (dist > radius) {
+                                showToast('您不在社區打卡範圍內，請移動至範圍內再打卡', true);
+                                showLoading(false);
+                                return;
+                            }
+                        }
+                    } catch (_) {
+                        showToast('檢查打卡範圍時發生錯誤，請稍後再試', true);
+                        showLoading(false);
+                        return;
+                    }
+
                     try {
                         // 僅允許安全規則中的打卡類型
                         const allowedTypes = ['上班','下班'];
