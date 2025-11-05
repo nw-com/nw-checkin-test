@@ -2187,11 +2187,17 @@
                                 let hasDoublePunch = false;
 
                                 const communityUsers = usersByCommunityId[c.id] || [];
-                                // 位置異常：任一成員的任一打卡在社區半徑外（受設定控制）
+                                // 位置異常：任一成員的任一打卡在社區半徑外（受設定控制）；
+                                // 若該打卡屬於其他社區，則不視為此社區的定位異常
                                 if (markLocation) {
                                     outerLoc: for (const u of communityUsers) {
                                         const recs = recordsByUser[u.id] || [];
                                         for (const r of recs) {
+                                            const recCommId = (r.communityId || '').trim();
+                                            const recCommCode = (r.communityCode || r.community?.code || '').trim();
+                                            const cCode = (c.code || c.communityCode || '').trim();
+                                            // 其他社區打卡不計入此社區定位異常
+                                            if ((recCommId && recCommId !== c.id) || (cCode && recCommCode && recCommCode !== cCode)) continue;
                                             const abnormal = computeRecordAbnormal(r, [c.id]);
                                             if (abnormal && abnormal.isAbnormal) { hasAbnormalLocation = true; break outerLoc; }
                                         }
@@ -4029,7 +4035,13 @@
                     }
                     // 定位異常
                     if (Array.isArray(svcIds) && svcIds.length > 0) {
+                        const currentCommId = state.currentCommunity?.id || null;
+                        const currentCommCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
                         for (const r of recs) {
+                            const recCommId = (r.communityId || '').trim();
+                            const recCommCode = (r.communityCode || r.community?.code || '').trim();
+                            // 若紀錄屬於其他社區，則不顯示定位異常
+                            if ((currentCommId && recCommId && recCommId !== currentCommId) || (currentCommCode && recCommCode && recCommCode !== currentCommCode)) continue;
                             const abnormal = computeRecordAbnormal(r, svcIds);
                             if (abnormal && abnormal.isAbnormal) {
                                 anomalies.push({ type: '打卡定位異常', detail: abnormal.detail || '' });
@@ -12440,7 +12452,7 @@ function renderTrackingLeave(container) {
                         }
 
                         const ts = latestRecord?.timestamp && latestRecord.timestamp.toDate ? latestRecord.timestamp.toDate() : (latestRecord?.timestamp ? new Date(latestRecord.timestamp) : (user.lastClockInTime?.toDate ? user.lastClockInTime.toDate() : null));
-                        // 定位異常標記（以服務社區半徑判斷）
+                        // 定位異常標記（以服務社區半徑判斷）；若於其他社區則改顯示提示並抑制異常
                         let abnormalText = '';
                         try {
                             const svcIds = Array.isArray(user.serviceCommunities) ? user.serviceCommunities.slice() : [];
@@ -12448,9 +12460,22 @@ function renderTrackingLeave(container) {
                                 const mapped = Object.values(state.communitiesById).find(c => (c.code || '').trim() === (user.serviceCommunityCode || '').trim());
                                 if (mapped) svcIds.push(mapped.id);
                             }
-                            if (latestRecord && svcIds.length > 0) {
-                                const ab = computeRecordAbnormal(latestRecord, svcIds);
-                                if (ab && ab.isAbnormal) abnormalText = '定位異常';
+                            if (latestRecord) {
+                                const currentCommId = state.currentCommunity?.id || null;
+                                const currentCommCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
+                                const recCommId = (latestRecord.communityId || '').trim();
+                                const recCommCode = (latestRecord.communityCode || latestRecord.community?.code || '').trim();
+                                // 於其他社區：顯示提示文字為藍色，且不標記為定位異常
+                                if ((currentCommId && recCommId && recCommId !== currentCommId) || (currentCommCode && recCommCode && recCommCode !== currentCommCode)) {
+                                    const t = (latestRecord.type || '').trim();
+                                    const isStart = t.includes('上班');
+                                    const isEnd = t.includes('下班') || t.includes('已下班');
+                                    const msg = isStart ? '該員已於其他社區上班' : (isEnd ? '該員已於其他社區下班' : '該員於其他社區活動');
+                                    abnormalText = `<span class="text-blue-600">${msg}</span>`;
+                                } else if (svcIds.length > 0) {
+                                    const ab = computeRecordAbnormal(latestRecord, svcIds);
+                                    if (ab && ab.isAbnormal) abnormalText = '⚠ 定位異常';
+                                }
                             }
                         } catch (_) {}
 
@@ -12546,7 +12571,7 @@ function renderTrackingLeave(container) {
                                     <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${(user.name || 'U').charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
                                     <div>
                                         <p class="font-medium text-sm text-gray-800">${user.name || '未知用戶'}</p>
-                                        <p class="text-xs font-semibold ${statusColorClass}">${user.__statusText || '未打卡'}${user.__abnormalText ? ' · ⚠ ' + user.__abnormalText : ''}</p>
+                                        <p class="text-xs font-semibold ${statusColorClass}">${user.__statusText || '未打卡'}${user.__abnormalText ? ' · ' + user.__abnormalText : ''}</p>
                                         ${distanceText ? `<p class=\"text-xs text-gray-500\">${distanceText}${rangeText}</p>` : ''}
                                     </div>
                                 </div>
