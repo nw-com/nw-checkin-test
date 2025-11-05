@@ -532,6 +532,25 @@
             const rcode = (rec.communityCode || rec.dutyCommunityCode || '').trim();
             return (cid && rcid && rcid === cid) || (ccode && rcode && rcode === ccode);
         }
+        // 名稱回退：僅以地點名稱包含社區名稱作為過濾（避免舊紀錄無社區欄位時完全不顯示）
+        function recordMatchesCommunityByName(rec, comm) {
+            if (!rec || !comm) return false;
+            const cname = (comm.name || '').trim();
+            const lname = (rec.locationName || '').trim();
+            return !!(cname && lname && lname.includes(cname));
+        }
+        // 追蹤分頁專用過濾：先嚴格，若完全無嚴格匹配則以名稱回退（不使用舊函式的全通配回退）
+        function filterRecordsByCommunityForTracking(records, comm) {
+            try {
+                const strict = (records || []).filter(r => recordMatchesCommunityStrict(r, comm));
+                if (strict.length > 0) return strict;
+                const byName = (records || []).filter(r => recordMatchesCommunityByName(r, comm));
+                return byName;
+            } catch (e) {
+                console.warn('社區過濾失敗，暫以名稱過濾回退', e);
+                return (records || []).filter(r => recordMatchesCommunityByName(r, comm));
+            }
+        }
         
         const loadingScreen = document.getElementById('loading-screen');
         
@@ -10848,8 +10867,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 }
                 const records = [];
                 querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
-                const filteredRecords = records
-                    .filter(r => recordMatchesCommunityStrict(r, state.currentCommunity))
+                const filteredRecords = filterRecordsByCommunityForTracking(records, state.currentCommunity)
                     .filter(r => (selectedUserId === 'all' ? true : r.userId === selectedUserId));
                 const usersRef = collection(db, 'users');
                 const usersSnapshot = await getDocs(usersRef);
@@ -11257,7 +11275,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         });
                         // 套用社區過濾與角色過濾（all 情況）
                         const allowedIdsSet = allowedIdsSetParam instanceof Set ? allowedIdsSetParam : null;
-                        const communityFiltered = records.filter(r => recordMatchesCommunityStrict(r, state.currentCommunity));
+                        const communityFiltered = filterRecordsByCommunityForTracking(records, state.currentCommunity);
                         const finalRecords = (selectedUserId === 'all')
                             ? communityFiltered.filter(r => !allowedIdsSet || allowedIdsSet.has(r.userId))
                             : communityFiltered;
