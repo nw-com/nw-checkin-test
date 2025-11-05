@@ -16332,11 +16332,17 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                             showLoading(false);
                             return;
                         }
+                        const tsNow = (window.__fs && window.__fs.Timestamp && typeof window.__fs.Timestamp.now === 'function')
+                            ? window.__fs.Timestamp.now()
+                            : new Date();
+                        const locValue = (window.__fs && typeof window.__fs.GeoPoint === 'function')
+                            ? new window.__fs.GeoPoint(safeLat, safeLng)
+                            : { latitude: safeLat, longitude: safeLng };
                         const recordData = {
                             userId: uid,
                             type: type,
-                            timestamp: Timestamp.now(),
-                            location: new GeoPoint(safeLat, safeLng),
+                            timestamp: tsNow,
+                            location: locValue,
                             photoUrls,
                             descriptions,
                             deviceId: state.deviceId || 'unknown-device',
@@ -16361,17 +16367,21 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                         } catch (e) {
                             const expectedCodes = ['permission-denied','failed-precondition','invalid-argument'];
                             const logFn = expectedCodes.includes(e?.code) ? console.warn : console.error;
-                            logFn('新增 clockInRecords 失敗：', e?.code, e?.message || e, { keys: Object.keys(recordData), type: recordData.type, locationIsGeoPoint: recordData.location instanceof GeoPoint, photosLen: recordData.photoUrls.length, descLen: recordData.descriptions.length });
+                            const isGeo = !!recordData?.location && typeof recordData.location === 'object' && 'latitude' in recordData.location && 'longitude' in recordData.location;
+                            logFn('新增 clockInRecords 失敗：', e?.code, e?.message || e, { keys: Object.keys(recordData), type: recordData.type, locationIsGeoPoint: isGeo, photosLen: recordData.photoUrls.length, descLen: recordData.descriptions.length });
                             // 當前架構僅上班/下班：若無法建立紀錄，回退為僅更新使用者狀態
                             if (expectedCodes.includes(e?.code)) {
                                 try {
                                     const { updateDoc, doc } = window.__fs;
                                     const db2 = window.__db;
                                     const uid2 = window.__auth?.currentUser?.uid || state.currentUser?.uid;
+                                    const tsNow2 = (window.__fs && window.__fs.Timestamp && typeof window.__fs.Timestamp.now === 'function')
+                                        ? window.__fs.Timestamp.now()
+                                        : new Date();
                                     await updateDoc(doc(db2, "users", uid2), {
                                         status: type,
                                         clockInStatus: type,
-                                        lastUpdated: Timestamp.now()
+                                        lastUpdated: tsNow2
                                     });
                                     console.warn('無法建立 clockInRecords，已改為僅更新使用者狀態');
                                 } catch (e2) {
@@ -16398,10 +16408,13 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                             console.warn('寫入首次打卡裝置ID失敗', e);
                         }
 
+                        const tsNow3 = (window.__fs && window.__fs.Timestamp && typeof window.__fs.Timestamp.now === 'function')
+                            ? window.__fs.Timestamp.now()
+                            : new Date();
                         const userUpdateData = {
                             status: type,
                             clockInStatus: type,
-                            lastUpdated: Timestamp.now()
+                            lastUpdated: tsNow3
                         };
                         
                         // 如果是外出打卡，添加外出地點名稱
