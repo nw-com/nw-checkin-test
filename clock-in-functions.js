@@ -203,14 +203,37 @@ function updateDashboardStatus() {
             return;
         }
 
-        // 優先使用：userId + timestamp desc 的查詢（需要複合索引）
+        // 優先使用：限制於目前社區的最新紀錄（需要複合索引）
         try {
-            const q = query(
-                collection(window.__db, 'clockInRecords'),
-                where('userId', '==', userId),
-                orderBy('timestamp', 'desc'),
-                limit(1)
-            );
+            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+            let q;
+            if (comm && (comm.id || comm.code || comm.communityCode)) {
+                if (comm.id) {
+                    q = query(
+                        collection(window.__db, 'clockInRecords'),
+                        where('userId', '==', userId),
+                        where('communityId', '==', comm.id),
+                        orderBy('timestamp', 'desc'),
+                        limit(1)
+                    );
+                } else {
+                    const ccode = (comm.code || comm.communityCode);
+                    q = query(
+                        collection(window.__db, 'clockInRecords'),
+                        where('userId', '==', userId),
+                        where('communityCode', '==', ccode),
+                        orderBy('timestamp', 'desc'),
+                        limit(1)
+                    );
+                }
+            } else {
+                q = query(
+                    collection(window.__db, 'clockInRecords'),
+                    where('userId', '==', userId),
+                    orderBy('timestamp', 'desc'),
+                    limit(1)
+                );
+            }
             const snap = await getDocs(q);
             if (!snap.empty) {
                 const r = snap.docs[0].data();
@@ -233,7 +256,7 @@ function updateDashboardStatus() {
             logFn('讀取最新打卡紀錄（複合索引）失敗:', e?.code, e?.message || e);
         }
 
-        // 備援：只按 timestamp desc 抓取最近 N 筆，再用 userId 篩選
+        // 備援：只按 timestamp desc 抓取最近 N 筆，再用 userId + 社區篩選
         try {
             const fallbackQ = query(
                 collection(window.__db, 'clockInRecords'),
@@ -241,7 +264,23 @@ function updateDashboardStatus() {
                 limit(200)
             );
             const fallbackSnap = await getDocs(fallbackQ);
-            const myDoc = fallbackSnap.docs.find(d => (d.data()?.userId === userId));
+            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+            const cname = (comm && comm.name) ? String(comm.name).trim() : '';
+            const cid = (comm && comm.id) ? String(comm.id).trim() : '';
+            const ccode = (comm && (comm.code || comm.communityCode)) ? String(comm.code || comm.communityCode).trim() : '';
+            const myDoc = fallbackSnap.docs.find(d => {
+                const r = d.data() || {};
+                if (r.userId !== userId) return false;
+                const rcid = (r.communityId || '').trim();
+                const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                const lname = (r.locationName || '').trim();
+                if (cid && rcid && rcid === cid) return true;
+                if (ccode && rcode && rcode === ccode) return true;
+                if (cname && lname && lname.includes(cname)) return true;
+                // 若未設定社區或舊紀錄無社區欄位，則允許顯示
+                if (!comm) return true;
+                return false;
+            });
             if (myDoc) {
                 const r = myDoc.data();
                 const statusText = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
@@ -432,20 +471,11 @@ function updateButtonStatus() {
         startBtn.textContent = '上班打卡';
         endBtn.dataset.type = '下班';
         endBtn.textContent = '下班打卡';
-
-        if (nextType === '上班') {
-            // 啟用上班、禁用下班
-            startBtn.disabled = false;
-            startBtn.classList.add('bg-green-500','hover:bg-green-600');
-            endBtn.disabled = true;
-            endBtn.classList.add('bg-gray-300','cursor-not-allowed','disabled');
-        } else if (nextType === '下班') {
-            // 啟用下班、禁用上班
-            endBtn.disabled = false;
-            endBtn.classList.add('bg-red-500','hover:bg-red-600');
-            startBtn.disabled = true;
-            startBtn.classList.add('bg-gray-300','cursor-not-allowed','disabled');
-        }
+        // 調整：上班與下班始終可打（移除互斥禁用）
+        startBtn.disabled = false;
+        startBtn.classList.add('bg-green-500','hover:bg-green-600');
+        endBtn.disabled = false;
+        endBtn.classList.add('bg-red-500','hover:bg-red-600');
     };
     
     // 根據當前狀態啟用相應按鈕
@@ -470,24 +500,12 @@ function updateButtonStatus() {
             setWorkToggleButton('下班', '下班打卡', 'bg-red-500');
             break;
         case '外出':
-            // 外出中：抵達可動作（藍系），下班不可動作（灰），返回不可動作（灰）
+            // 外出中：抵達可動作（藍系）；上下班保持可打
             setOutboundCycleButton('抵達', '抵達打卡', 'bg-blue-500');
-            const endBtn1 = document.getElementById('work-end-btn');
-            if (endBtn1) {
-                endBtn1.disabled = true;
-                endBtn1.classList.remove('bg-red-500','hover:bg-red-600');
-                endBtn1.classList.add('bg-gray-300','cursor-not-allowed','disabled');
-            }
             break;
         case '抵達':
-            // 抵達中：離開可動作（藍系），下班不可動作（灰），返回不可動作（灰）
+            // 抵達中：離開可動作（藍系）；上下班保持可打
             setOutboundCycleButton('離開', '離開打卡', 'bg-blue-500');
-            const endBtn2 = document.getElementById('work-end-btn');
-            if (endBtn2) {
-                endBtn2.disabled = true;
-                endBtn2.classList.remove('bg-red-500','hover:bg-red-600');
-                endBtn2.classList.add('bg-gray-300','cursor-not-allowed','disabled');
-            }
             break;
         case '離開':
             // 離開後：外出循環回到外出（藍），下班可動作（紅），返回可動作（深綠）
@@ -510,10 +528,10 @@ function updateButtonStatus() {
             }
             break;
         case '臨時請假':
-            // 臨時請假中，不啟用其他按鈕
+            // 臨時請假中：保留上下班可打
             break;
         case '特殊勤務':
-            // 特殊勤務中，不啟用其他按鈕
+            // 特殊勤務中：保留上下班可打
             break;
         default:
             // 未知狀態，切換按鈕設為上班
@@ -1300,7 +1318,9 @@ async function performAutoClockOut() {
             photoUrls: [],
             descriptions: [],
             isAutomatic: true,
-            deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
+            deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device',
+            communityId: (window.state && window.state.currentCommunity && window.state.currentCommunity.id) ? window.state.currentCommunity.id : null,
+            communityCode: (window.state && window.state.currentCommunity && (window.state.currentCommunity.code || window.state.currentCommunity.communityCode)) ? (window.state.currentCommunity.code || window.state.currentCommunity.communityCode) : null
         };
         if (locationName) {
             recordData.locationName = locationName;
@@ -1510,7 +1530,9 @@ async function checkAllUsersOvertimeStatus() {
                             photoUrls: [],
                             descriptions: [],
                             isAutomatic: true,
-                            deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
+                            deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device',
+                            communityId: (window.state && window.state.currentCommunity && window.state.currentCommunity.id) ? window.state.currentCommunity.id : null,
+                            communityCode: (window.state && window.state.currentCommunity && (window.state.currentCommunity.code || window.state.currentCommunity.communityCode)) ? (window.state.currentCommunity.code || window.state.currentCommunity.communityCode) : null
                         };
                         if (locationName) {
                             recordData.locationName = locationName;

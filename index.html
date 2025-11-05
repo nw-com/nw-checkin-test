@@ -7539,7 +7539,9 @@
                                     deviceId: 'retro',
                                     locationName: r.locationName || null,
                                     dutyType: null,
-                                    isAutomatic: false
+                                    isAutomatic: false,
+                                    communityId: state.currentCommunity?.id || null,
+                                    communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
                                 });
                                 // 同步更新 users 狀態，讓儀錶板與定位打卡按鈕正確顯示
                                 try {
@@ -16338,19 +16340,18 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                             photoUrls,
                             descriptions,
                             deviceId: state.deviceId || 'unknown-device',
-                            isAutomatic: false
+                            isAutomatic: false,
+                            communityId: state.currentCommunity?.id || null,
+                            communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
                         };
                         // 勤務項目：避免 undefined 寫入
                         if (type === '外出' && state.dutyType) {
                             recordData.dutyType = state.dutyType;
                         }
-                        
-                        // 如果是外出打卡，添加地點名稱
-                        if (type === '外出') {
-                            const locName = typeof location.name === 'string' ? location.name : '';
-                            if (locName) {
-                                recordData.locationName = locName.slice(0, 100);
-                            }
+                        // 添加地點名稱（若可用），不僅限外出
+                        const locName = typeof location?.name === 'string' ? location.name : '';
+                        if (locName) {
+                            recordData.locationName = locName.slice(0, 100);
                         }
                         
                         try {
