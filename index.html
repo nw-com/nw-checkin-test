@@ -325,9 +325,10 @@
             verifyPasswordResetCode, confirmPasswordReset
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { 
-            getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, onSnapshot,
+            getFirestore, initializeFirestore, persistentLocalCache,
+            doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, onSnapshot,
             query, where, getDocs, serverTimestamp, orderBy, limit, GeoPoint, Timestamp, writeBatch,
-            enableIndexedDbPersistence, arrayUnion, arrayRemove
+            arrayUnion, arrayRemove
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { 
             getStorage, ref, uploadBytes, getDownloadURL, deleteObject
@@ -564,22 +565,12 @@
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
             try { auth.languageCode = 'zh-TW'; } catch (_) {}
-            const db = getFirestore(app);
-
-            // 啟用 Firestore 離線持久化與線上/離線提示
-            enableIndexedDbPersistence(db).then(() => {
-                window.__persistenceEnabled = true;
-            }).catch((err) => {
-                if (err?.code === 'failed-precondition') {
-                    console.warn('Firestore persistence failed-precondition', err);
-                    try { showToast('提示：離線模式僅支援單一分頁，請關閉其他分頁', true); } catch (_) {}
-                } else if (err?.code === 'unimplemented') {
-                    console.warn('Firestore persistence unimplemented', err);
-                    try { showToast('提示：瀏覽器不支援離線存取，需連線使用', true); } catch (_) {}
-                } else {
-                    console.warn('啟用離線持久化失敗', err);
-                }
+            // 使用新版初始化方式與持久化快取，並強制 Long Polling 以避免 WebChannel 400 終止請求
+            const db = initializeFirestore(app, {
+                localCache: persistentLocalCache(),
+                experimentalForceLongPolling: true
             });
+            window.__persistenceEnabled = true;
             const notifyOnlineState = (online) => {
                 window.__isOnline = !!online;
                 try {
