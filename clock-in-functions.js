@@ -1562,4 +1562,37 @@ document.addEventListener('DOMContentLoaded', function() {
     // 僅在定位打卡子頁面渲染後，由該頁面呼叫 initClockInButtonStatus。
     // 自動下班已停用：不載入相關設定
     // setTimeout(loadAutoClockOutSettings, 1000);
+
+    // 監聽 DOM 變化：當定位打卡頁重新渲染（按鈕容器被重建）時，立即套用按鈕狀態
+    try {
+        let syncPending = false;
+        const trySyncButtons = () => {
+            if (syncPending) return;
+            syncPending = true;
+            setTimeout(() => {
+                syncPending = false;
+                const container = document.getElementById('clock-in-buttons');
+                const startBtn = document.getElementById('work-start-btn');
+                const endBtn = document.getElementById('work-end-btn');
+                if (container && startBtn && endBtn && typeof updateButtonStatus === 'function') {
+                    try { updateButtonStatus(); } catch (e) { console.debug('DOM 變化後按鈕狀態同步失敗', e); }
+                }
+            }, 50);
+        };
+        const observer = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.type === 'childList') {
+                    // 有新節點加入或子頁面切換時嘗試同步
+                    trySyncButtons();
+                } else if (m.type === 'attributes') {
+                    if (m.target && (m.target.id === 'clock-in-buttons' || m.target.id === 'work-start-btn' || m.target.id === 'work-end-btn')) {
+                        trySyncButtons();
+                    }
+                }
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    } catch (e) {
+        console.warn('按鈕狀態同步監聽初始化失敗', e);
+    }
 });
