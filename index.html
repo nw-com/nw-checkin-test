@@ -10927,8 +10927,16 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         q = query(recordsRef, ...base);
                     } else {
                         const base = [where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS)];
-                        // 不在查詢層面加 communityId；改以前端 recordMatchesCommunity 過濾
-                        q = query(recordsRef, ...base);
+                        // 優先在查詢層面加入社區條件（若有），提高精準度
+                        const cid = (currentComm?.id || '').trim();
+                        const ccode = (currentComm?.code || currentComm?.communityCode || '').trim();
+                        if (cid) {
+                            q = query(recordsRef, ...base, where('communityId', '==', cid));
+                        } else if (ccode) {
+                            q = query(recordsRef, ...base, where('communityCode', '==', ccode));
+                        } else {
+                            q = query(recordsRef, ...base);
+                        }
                     }
                 } catch (_) {
                     if (selectedUserId === 'all') {
@@ -10969,9 +10977,9 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         ? filterRecordsByCommunityForTracking(records, state.currentCommunity)
                         : records.filter(r => allowedUserIds.includes(r.userId));
                 } else {
-                    // 選定人員：僅顯示屬於目前社區的當日紀錄
+                    // 選定人員：僅顯示屬於目前社區的當日紀錄（嚴格比對 Id/Code，不做名稱回退）
                     const userRecords = records.filter(r => r.userId === selectedUserId);
-                    filteredRecords = filterRecordsByCommunityForTracking(userRecords, state.currentCommunity);
+                    filteredRecords = userRecords.filter(r => recordMatchesCommunityStrict(r, state.currentCommunity));
                 }
                 if (!filteredRecords || filteredRecords.length === 0) {
                     container.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
