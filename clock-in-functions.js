@@ -471,11 +471,28 @@ function updateButtonStatus() {
         startBtn.textContent = '上班打卡';
         endBtn.dataset.type = '下班';
         endBtn.textContent = '下班打卡';
-        // 調整：上班與下班始終可打（移除互斥禁用）
-        startBtn.disabled = false;
-        startBtn.classList.add('bg-green-500','hover:bg-green-600');
-        endBtn.disabled = false;
-        endBtn.classList.add('bg-red-500','hover:bg-red-600');
+
+        // 依當前狀態切換按鈕顏色與禁用
+        const workingStates = ['上班','外出','抵達','離開','返回'];
+        if (workingStates.includes(state.clockInStatus)) {
+            // 已上班或工作流程中：上班灰色禁用，下班紅色可按
+            startBtn.disabled = true;
+            startBtn.classList.add('bg-gray-300','cursor-not-allowed','disabled');
+            endBtn.disabled = false;
+            endBtn.classList.add('bg-red-500','hover:bg-red-600');
+        } else if (state.clockInStatus === '下班' || state.clockInStatus === '已下班-未打卡') {
+            // 已下班：下班灰色禁用，上班綠色可按
+            endBtn.disabled = true;
+            endBtn.classList.add('bg-gray-300','cursor-not-allowed','disabled');
+            startBtn.disabled = false;
+            startBtn.classList.add('bg-green-500','hover:bg-green-600');
+        } else {
+            // 初始/未知：預設僅開啟上班（綠），下班灰色
+            startBtn.disabled = false;
+            startBtn.classList.add('bg-green-500','hover:bg-green-600');
+            endBtn.disabled = true;
+            endBtn.classList.add('bg-gray-300','cursor-not-allowed','disabled');
+        }
     };
     
     // 根據當前狀態啟用相應按鈕
