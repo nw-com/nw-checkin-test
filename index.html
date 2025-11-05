@@ -3416,7 +3416,7 @@
                     };
                     const resolvedIdFromCode = currentCommCode ? resolveCommunityIdByCode(currentCommCode) : null;
                     const targetCommunityId = currentCommId || resolvedIdFromCode || null;
-                    // 將異常事件持久化到 Firestore，並設定 3 天到期；避免重複以固定鍵覆寫
+                    // 將異常事件持久化到 Firestore，並設定 24 小時到期；避免重複以固定鍵覆寫
                     async function persistAnomalies(events, communityId) {
                         if (!db || !Array.isArray(events) || events.length === 0) return;
                         const now = new Date();
@@ -3436,7 +3436,7 @@
                                 const type = a?.type || '未知異常';
                                 const dt = a?.time instanceof Date ? a.time : (a?.time?.toDate ? a.time.toDate() : new Date());
                                 const docId = buildDocId(a);
-                                const expires = new Date(dt.getTime() + 3*24*60*60*1000);
+                                const expires = new Date(dt.getTime() + 24*60*60*1000);
                                 // 若已標記 suppressed，略過持久化（避免重新覆寫）
                                 try {
                                     const existSnap = await getDoc(doc(db, 'anomalies', docId));
@@ -3487,11 +3487,10 @@
                         });
                     }
 
-                    // 近三日範圍（含今日）：超過三日不顯示
+                    // 近 24 小時範圍：超過 24 小時不顯示
                     const now = new Date();
-                    const rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-                    const rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    rangeStart.setDate(rangeStart.getDate() - 2);
+                    const rangeEnd = new Date(now.getTime());
+                    const rangeStart = new Date(now.getTime() - 24*60*60*1000);
                     const tsStart = Timestamp?.fromDate ? Timestamp.fromDate(rangeStart) : rangeStart;
                     const tsEnd = Timestamp?.fromDate ? Timestamp.fromDate(rangeEnd) : rangeEnd;
 
@@ -3804,11 +3803,11 @@
                             await cleanupOldAnomalies(targetCommunityId);
                         } catch (_) {}
                     }
-                    // 顯示通知（含刪除鍵，僅管理角色可見）
+                    // 顯示通知（不顯示刪除鍵，24 小時後自動過期）
                     let html = '';
                     // 建立索引以便刪除時可重建 payload（避免文件不存在時無法更新）
                     try { state.__anomaliesIndex = {}; } catch (_) { window.state = window.state || {}; window.state.__anomaliesIndex = {}; }
-                    const canDelete = canManage;
+                    const canDelete = false;
                     filtered.forEach(a => {
                         const name = a.user.name || a.user.displayName || '未命名';
                         const icon = (a.type === '打卡定位異常') ? 'map-pin' : 'alert-triangle';
@@ -7480,20 +7479,18 @@
                                 if (!reqDoc.exists()) { showToast('申請不存在', true); return; }
                                 const r = reqDoc.data();
                                 const ts = r.targetTime?.toDate?.() ? r.targetTime.toDate() : (r.targetTime ? new Date(r.targetTime) : new Date());
+                                // 注意：遵守 Firestore 規則允許的欄位集合
                                 await addDoc(collection(db, 'clockInRecords'), {
                                     userId: r.userId,
                                     type: r.type,
                                     timestamp: Timestamp?.fromDate ? Timestamp.fromDate(ts) : ts,
-                                    location: GeoPoint ? new GeoPoint(0,0) : { latitude: 0, longitude: 0 },
+                                    location: GeoPoint ? new GeoPoint(0,0) : new (window.__fs?.GeoPoint || function(lat,lng){ return { latitude: lat, longitude: lng }; })(0,0),
                                     photoUrls: [],
                                     descriptions: [],
                                     deviceId: 'retro',
                                     locationName: r.locationName || null,
                                     dutyType: null,
-                                    isAutomatic: false,
-                                    // 以目前社區識別為主（若申請本身無社區欄位）
-                                    communityId: state.currentCommunity?.id || null,
-                                    communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
+                                    isAutomatic: false
                                 });
                                 // 同步更新 users 狀態，讓儀錶板與定位打卡按鈕正確顯示
                                 try {
