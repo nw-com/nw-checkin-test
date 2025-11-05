@@ -10881,8 +10881,20 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 }
                 const records = [];
                 querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
-                const filteredRecords = filterRecordsByCommunityForTracking(records, state.currentCommunity)
-                    .filter(r => (selectedUserId === 'all' ? true : r.userId === selectedUserId));
+                let filteredRecords;
+                if (selectedUserId === 'all') {
+                    // 若有白名單（社區成員），直接以 userId 過濾，避免舊紀錄缺少社區欄位
+                    filteredRecords = (!allowedUserIds || allowedUserIds.length === 0)
+                        ? filterRecordsByCommunityForTracking(records, state.currentCommunity)
+                        : records.filter(r => allowedUserIds.includes(r.userId));
+                } else {
+                    // 選定人員：顯示該人員的全部當日紀錄
+                    filteredRecords = records.filter(r => r.userId === selectedUserId);
+                }
+                if (!filteredRecords || filteredRecords.length === 0) {
+                    container.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                    return;
+                }
                 const usersRef = collection(db, 'users');
                 const usersSnapshot = await getDocs(usersRef);
                 const usersMap = {};
@@ -11168,7 +11180,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                             <div class="flex items-center space-x-2">
                                 <label for="user-select" class="text-sm font-medium">選擇人員:</label>
                                 <select id="user-select" class="border border-gray-300 rounded-md px-2 py-1">
-                                    <option value="all">全部人員</option>
+                                    <option value="all">全社區人員</option>
                                     <!-- 人員選項將動態添加 -->
                                 </select>
                             </div>
@@ -11210,11 +11222,9 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                     querySnapshot.forEach(doc => {
                         users.push({ id: doc.id, ...doc.data() });
                     });
-                    // 目前社區過濾與角色過濾
+                    // 目前社區過濾（顯示該社區的所有人員）
                     const currentCommId = state.currentCommunity?.id || null;
                     const currentCommCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
-                    const allowedRoles = ['總幹事','秘書','保全','清潔','機電'];
-                    const pickTitle = (u) => ((u.applicationTitle || u.jobTitle || u.role || '').trim());
                     const inCurrentCommunity = (u) => {
                         const svcIds = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
                         const svcCodes = Array.isArray(u.serviceCommunityCodes) ? u.serviceCommunityCodes : [];
@@ -11223,7 +11233,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         const byCode = currentCommCode ? (svcCodes.includes(currentCommCode) || oneCode === currentCommCode) : false;
                         return byId || byCode;
                     };
-                    const filteredUsers = users.filter(u => allowedRoles.includes(pickTitle(u)) && inCurrentCommunity(u));
+                    const filteredUsers = users.filter(u => inCurrentCommunity(u));
                     __allowedIdsSet = new Set(filteredUsers.map(u => u.id));
 
                     filteredUsers.sort((a, b) => (a.name||'').localeCompare(b.name||'', 'zh-Hant')).forEach(user => {
@@ -11289,10 +11299,29 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         });
                         // 套用社區過濾與角色過濾（all 情況）
                         const allowedIdsSet = allowedIdsSetParam instanceof Set ? allowedIdsSetParam : null;
-                        const communityFiltered = filterRecordsByCommunityForTracking(records, state.currentCommunity);
-                        const finalRecords = (selectedUserId === 'all')
-                            ? communityFiltered.filter(r => !allowedIdsSet || allowedIdsSet.has(r.userId))
-                            : communityFiltered;
+                        let finalRecords;
+                        if (selectedUserId === 'all') {
+                            // 依社區成員白名單過濾；若白名單為空則以紀錄上的社區欄位做後備過濾
+                            if (allowedIdsSet && allowedIdsSet.size > 0) {
+                                finalRecords = records.filter(r => allowedIdsSet.has(r.userId));
+                            } else {
+                                const commId = state.currentCommunity?.id || null;
+                                const commCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
+                                finalRecords = records.filter(r => {
+                                    const rid = (r.communityId || r.community)?.id || null;
+                                    const rcode = r.communityCode || (r.community?.code) || null;
+                                    return (commId && rid === commId) || (commCode && rcode === commCode);
+                                });
+                            }
+                        } else {
+                            // 指定人員時，顯示該人員的全部當日紀錄
+                            finalRecords = records.filter(r => r.userId === selectedUserId);
+                        }
+
+                        if (!finalRecords || finalRecords.length === 0) {
+                            recordsList.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                            return;
+                        }
                         
                         // 獲取所有用戶資料，用於顯示名稱
                         getDocs(usersRef).then((usersSnapshot) => {
@@ -12587,6 +12616,11 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                         <option value="">全部社區</option>
                                     </select>
                                 </div>` : '';
+                const searchFilterHtml = `
+                                <div>
+                                    <label class="block text-sm text-gray-600 mb-1">搜尋</label>
+                                    <input id="filter-search" type="text" class="w-full px-3 py-2 border rounded-md" placeholder="姓名、Email、電話">
+                                </div>`;
                 const tipHtml = isHRPage
                     ? '<div class="text-sm text-gray-500">此列表僅顯示目前社區之人員；不提供新增功能。</div>'
                     : '<div class="text-sm text-gray-500">顯示全部社區之人員；可依角色與社區過濾。</div>';
@@ -12601,7 +12635,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                     ${ (state.currentPage === 'navigation' && (state.currentUserData?.role === 'admin')) ? `<button id="add-user-btn" class="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700">新增帳號</button>` : '' }
                                 </div>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 ${isGlobalSettings ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-3">
                                 <div>
                                     <label class="block text-sm text-gray-600 mb-1">角色</label>
                                     <select id="filter-role" class="w-full px-3 py-2 border rounded-md">
@@ -12610,6 +12644,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                     </select>
                                 </div>
                                 ${communityFilterHtml}
+                                ${searchFilterHtml}
                             </div>
                         </div>
 
@@ -12627,6 +12662,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 let lastRendered = [];
                 const roleSelect = document.getElementById('filter-role');
                 const communitySelect = document.getElementById('filter-community');
+                const searchInput = document.getElementById('filter-search');
                 let communitiesCache = [];
                 const getEffectiveRole = (u) => {
                     const jt = ((u?.jobTitle || u?.applicationTitle || '').trim());
@@ -12634,6 +12670,9 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 };
 
                 roleSelect.addEventListener('change', renderUserList);
+                if (searchInput) {
+                    searchInput.addEventListener('input', renderUserList);
+                }
                 if (isGlobalSettings && communitySelect) {
                     try { await ensureCommunitiesCache(); } catch (_) {}
                     try { computeAvailableCommunities(); } catch (_) {}
@@ -12750,8 +12789,26 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                         }
                     }
 
+                    // 關鍵字搜尋（姓名、Email、電話、職稱）
+                    const kw = (searchInput && searchInput.value) ? searchInput.value.trim().toLowerCase() : '';
+                    if (kw) {
+                        filtered = filtered.filter(u => {
+                            const name = String(u.name || '').toLowerCase();
+                            const email = String(u.email || '').toLowerCase();
+                            const phone = String(u.phone || '').toLowerCase();
+                            const title = String(u.jobTitle || u.applicationTitle || '').toLowerCase();
+                            return name.includes(kw) || email.includes(kw) || phone.includes(kw) || title.includes(kw);
+                        });
+                    }
+
                     // 人員依姓氏筆畫少→多
                     filtered = filtered.slice().sort(compareUsersBySurnameStroke);
+
+                    if (filtered.length === 0) {
+                        userList.innerHTML = `<p class="text-center text-gray-500 p-4">沒有符合條件的帳號</p>`;
+                        lastRendered = [];
+                        return;
+                    }
 
                     filtered.forEach(user => {
                         const userElement = document.createElement('div');
