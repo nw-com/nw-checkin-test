@@ -12844,6 +12844,10 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                         const userElement = document.createElement('div');
                         userElement.className = 'flex items-center justify-between bg-white p-3 rounded-md shadow-sm border';
                         const effRole = getEffectiveRole(user);
+                        const empStatus = (user.employmentStatus || '').trim();
+                        const resignBadge = empStatus === '離職'
+                            ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 border border-gray-300">離職</span>'
+                            : '';
                         userElement.innerHTML = `
                             <div class="flex items-center">
                                 <img src="${user.avatarUrl || `https://placehold.co/40x40/EFEFEF/333333?text=${(user.name||'?').charAt(0)}`}" class="w-10 h-10 rounded-full mr-3 object-cover">
@@ -12853,6 +12857,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                     <div class="flex items-center flex-wrap gap-2 mt-1">
                                         <p class="text-xs text-gray-400 mr-2">${user.phone || ''}</p>
                                         <span class="text-xs px-2 py-1 rounded-full ${roleBadgeClass(effRole)}">${roleLabel(effRole)}</span>
+                                        ${resignBadge}
                                     </div>
                                 </div>
                             </div>
