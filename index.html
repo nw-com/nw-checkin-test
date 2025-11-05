@@ -14921,6 +14921,19 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                 <button class="close-btn text-gray-500 hover:text-gray-700"><i data-lucide="x" class="w-5 h-5"></i></button>
                             </div>
                             <div class="p-4 space-y-3">
+                                <!-- 顯示 recordId 與紀錄內容 -->
+                                <div class="border border-gray-200 rounded-md p-2 bg-gray-50">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-700">recordId</span>
+                                        <button id="copy-record-id" class="text-xs px-2 py-1 rounded bg-gray-200 hover:bg-gray-300">複製ID</button>
+                                    </div>
+                                    <div id="edit-record-id" class="mt-1 text-xs text-gray-600 break-all"></div>
+                                    <div class="mt-3 flex items-center justify-between">
+                                        <span class="text-xs text-gray-700">紀錄內容</span>
+                                        <button id="copy-record-json" class="text-xs px-2 py-1 rounded bg-gray-200 hover:bg-gray-300">複製內容</button>
+                                    </div>
+                                    <pre id="edit-record-json" class="mt-1 text-xs text-gray-600 whitespace-pre-wrap break-words"></pre>
+                                </div>
                                 <div>
                                     <label class="text-sm">狀態</label>
                                     <select id="edit-type" class="border rounded px-2 py-1 w-full">
@@ -14959,6 +14972,21 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 document.body.insertAdjacentHTML('beforeend', modalHTML);
                 lucide.createIcons();
                 const modalEl = document.getElementById(modalId);
+                // 填入 recordId 與紀錄內容
+                try {
+                    const idEl = modalEl.querySelector('#edit-record-id');
+                    const jsonEl = modalEl.querySelector('#edit-record-json');
+                    if (idEl) idEl.textContent = record.id || '';
+                    if (jsonEl) jsonEl.textContent = JSON.stringify(record, null, 2);
+                    const copyIdBtn = modalEl.querySelector('#copy-record-id');
+                    const copyJsonBtn = modalEl.querySelector('#copy-record-json');
+                    copyIdBtn?.addEventListener('click', async () => {
+                        try { await navigator.clipboard.writeText(record.id || ''); showToast('recordId 已複製'); } catch(_) { showToast('複製失敗', true); }
+                    });
+                    copyJsonBtn?.addEventListener('click', async () => {
+                        try { await navigator.clipboard.writeText(JSON.stringify(record)); showToast('紀錄內容已複製'); } catch(_) { showToast('複製失敗', true); }
+                    });
+                } catch (e) { console.warn('填入/複製 record 內容失敗', e); }
                 const close = () => { modalEl?.remove(); };
                 modalEl.querySelector('.close-btn')?.addEventListener('click', close);
                 modalEl.querySelector('.cancel-btn')?.addEventListener('click', close);
