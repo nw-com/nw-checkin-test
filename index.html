@@ -10969,8 +10969,9 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         ? filterRecordsByCommunityForTracking(records, state.currentCommunity)
                         : records.filter(r => allowedUserIds.includes(r.userId));
                 } else {
-                    // 選定人員：顯示該人員的全部當日紀錄
-                    filteredRecords = records.filter(r => r.userId === selectedUserId);
+                    // 選定人員：僅顯示屬於目前社區的當日紀錄
+                    const userRecords = records.filter(r => r.userId === selectedUserId);
+                    filteredRecords = filterRecordsByCommunityForTracking(userRecords, state.currentCommunity);
                 }
                 if (!filteredRecords || filteredRecords.length === 0) {
                     container.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
