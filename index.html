@@ -568,7 +568,8 @@
             // 使用新版初始化方式與持久化快取，並強制 Long Polling 以避免 WebChannel 400 終止請求
             const db = initializeFirestore(app, {
                 localCache: persistentLocalCache(),
-                experimentalForceLongPolling: true
+                experimentalAutoDetectLongPolling: true,
+                useFetchStreams: true
             });
             window.__persistenceEnabled = true;
             const notifyOnlineState = (online) => {
