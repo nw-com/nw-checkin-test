@@ -11028,6 +11028,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         ${record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
                                     </div>
                                     <div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId || '未知'}</div>
+                                    <div class="mt-1 text-xs text-gray-400">recordId: ${record.id || '未知'}</div>
                                     ${abnormalHtml}
                                 </div>
                                 <div class="flex space-x-2 items-start"></div>
