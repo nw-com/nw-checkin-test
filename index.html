@@ -2345,6 +2345,15 @@
                     const users = [];
                     snap.forEach(d => users.push({ id: d.id, ...d.data() }));
 
+                    // 過濾：排除離職與已刪除帳號（若存在刪除旗標）
+                    const isActiveUser = (u) => {
+                        const emp = ((u?.employmentStatus || '') + '').trim();
+                        const deleted = (u && (u.deleted === true || u.isDeleted === true)) ||
+                                        (typeof u?.status === 'string' && u.status.toLowerCase() === 'deleted');
+                        // 僅保留非離職且未刪除之使用者
+                        return emp !== '離職' && !deleted;
+                    };
+
                     // 計算年齡
                     const computeAge = (birth) => {
                         if (!birth) return null;
@@ -2383,7 +2392,7 @@
                         }
                         return null;
                     };
-                    let baseUsers = users.filter(u => resolveRole(u));
+                    let baseUsers = users.filter(u => isActiveUser(u) && resolveRole(u));
                     // 人員依年齡多→少排序（若年齡相同或未知，備援姓氏筆畫）
                     // 優先使用 u.age，其次由生日推算
                     const ageOf = (u) => {
