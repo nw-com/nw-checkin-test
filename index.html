@@ -506,7 +506,7 @@
             const jt = ((u?.jobTitle || u?.applicationTitle || '').trim());
             return jt || ((u?.role || '').trim());
         }
-        // 判斷打卡紀錄是否屬於目前社區（優先 communityId / communityCode，回退以名稱比對）
+        // 判斷打卡紀錄是否屬於目前社區（寬鬆：允許名稱包含作為回退）
         function recordMatchesCommunity(rec, comm) {
             if (!rec || !comm) return true;
             const cid = (comm.id || '').trim();
@@ -522,6 +522,15 @@
             // 舊紀錄可能沒有社區欄位或地點名稱，避免誤排除
             if (!rcid && !rcode && !lname) return true;
             return false;
+        }
+        // 嚴格判斷：僅接受 communityId 或 communityCode 明確匹配
+        function recordMatchesCommunityStrict(rec, comm) {
+            if (!rec || !comm) return false;
+            const cid = (comm.id || '').trim();
+            const ccode = (comm.code || comm.communityCode || '').trim();
+            const rcid = (rec.communityId || '').trim();
+            const rcode = (rec.communityCode || rec.dutyCommunityCode || '').trim();
+            return (cid && rcid && rcid === cid) || (ccode && rcode && rcode === ccode);
         }
         
         const loadingScreen = document.getElementById('loading-screen');
@@ -10840,7 +10849,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 const records = [];
                 querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
                 const filteredRecords = records
-                    .filter(r => recordMatchesCommunity(r, state.currentCommunity))
+                    .filter(r => recordMatchesCommunityStrict(r, state.currentCommunity))
                     .filter(r => (selectedUserId === 'all' ? true : r.userId === selectedUserId));
                 const usersRef = collection(db, 'users');
                 const usersSnapshot = await getDocs(usersRef);
@@ -11248,7 +11257,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                         });
                         // 套用社區過濾與角色過濾（all 情況）
                         const allowedIdsSet = allowedIdsSetParam instanceof Set ? allowedIdsSetParam : null;
-                        const communityFiltered = records.filter(r => recordMatchesCommunity(r, state.currentCommunity));
+                        const communityFiltered = records.filter(r => recordMatchesCommunityStrict(r, state.currentCommunity));
                         const finalRecords = (selectedUserId === 'all')
                             ? communityFiltered.filter(r => !allowedIdsSet || allowedIdsSet.has(r.userId))
                             : communityFiltered;
