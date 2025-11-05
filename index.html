@@ -4895,6 +4895,10 @@
                 // 初始化打卡狀態（在定位打卡子頁渲染完成後）
                 initClockInButtonStatus();
                 updateStatusDisplay();
+                // 立即同步本地狀態到按鈕樣式，避免依賴遠端回讀延遲
+                if (typeof updateButtonStatus === 'function') {
+                    try { updateButtonStatus(); } catch (e) { console.debug('立即更新按鈕狀態失敗', e); }
+                }
                 
                 // 打卡按鈕點擊事件
                 document.querySelectorAll('.clock-in-btn').forEach(btn => {
