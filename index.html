@@ -3806,12 +3806,24 @@
                     }
                     // 顯示通知（含刪除鍵，僅管理角色可見）
                     let html = '';
+                    // 建立索引以便刪除時可重建 payload（避免文件不存在時無法更新）
+                    try { state.__anomaliesIndex = {}; } catch (_) { window.state = window.state || {}; window.state.__anomaliesIndex = {}; }
                     const canDelete = canManage;
                     filtered.forEach(a => {
                         const name = a.user.name || a.user.displayName || '未命名';
                         const icon = (a.type === '打卡定位異常') ? 'map-pin' : 'alert-triangle';
                         const timeStr = a.time ? a.time.toLocaleString('zh-TW', { hour12:false }) : '';
                         const idKey = buildDocId(a);
+                        // 建立刪除所需的資料索引
+                        try {
+                            (state.__anomaliesIndex ||= {})[idKey] = {
+                                userId: a?.user?.id || a?.userId || 'unknown',
+                                type: a?.type || '未知異常',
+                                detail: a?.detail || '',
+                                time: a?.time instanceof Date ? a.time : (a?.time?.toDate ? a.time.toDate() : new Date()),
+                                communityId: targetCommunityId || null
+                            };
+                        } catch (_) {}
                         html += `
                             <div class="p-3 bg-red-50 border border-red-200 rounded-md">
                                 <div class="flex items-center justify-between">
@@ -3836,7 +3848,36 @@
                                 try {
                                     const nowY = new Date();
                                     const tsNowY = Timestamp?.fromDate ? Timestamp.fromDate(nowY) : nowY;
-                                    await setDoc(doc(db, 'anomalies', id), { suppressed: true, updatedAt: tsNowY }, { merge: true });
+                                    // 若文件存在則更新；不存在則以完整 payload 建立並標記 suppressed
+                                    let exists = false;
+                                    try {
+                                        const snap = await getDoc(doc(db, 'anomalies', id));
+                                        exists = !!(snap && snap.exists && snap.exists());
+                                    } catch (_) {}
+                                    if (exists) {
+                                        await setDoc(doc(db, 'anomalies', id), { suppressed: true, updatedAt: tsNowY }, { merge: true });
+                                    } else {
+                                        const info = (state.__anomaliesIndex || {})[id] || null;
+                                        if (info) {
+                                            const expires = new Date(info.time.getTime() + 3*24*60*60*1000);
+                                            const payload = {
+                                                userId: info.userId,
+                                                type: info.type,
+                                                detail: info.detail || '',
+                                                time: Timestamp?.fromDate ? Timestamp.fromDate(info.time) : info.time,
+                                                communityId: info.communityId || null,
+                                                createdAt: tsNowY,
+                                                updatedAt: tsNowY,
+                                                expiresAt: Timestamp?.fromDate ? Timestamp.fromDate(expires) : expires,
+                                                source: 'dashboard',
+                                                suppressed: true
+                                            };
+                                            await setDoc(doc(db, 'anomalies', id), payload, { merge: true });
+                                        } else {
+                                            // 若索引缺失，仍先移除卡片以改善使用體驗
+                                            console.warn('缺少 anomalies 索引資料，僅移除卡片');
+                                        }
+                                    }
                                     // 立即從 UI 移除卡片
                                     const card = e.currentTarget.closest('.p-3');
                                     if (card && card.parentNode) card.parentNode.removeChild(card);
