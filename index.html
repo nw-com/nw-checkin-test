@@ -481,8 +481,13 @@
                 const db = window.__db;
                 if (!db || !doc || !getDoc || !setDoc) return true;
                 const sRef = doc(db, 'sessions', user.uid);
-                // 寫入／接管會話：以 sessionId 作為唯一標記，允許新裝置接管並讓舊裝置自動登出
-                await setDoc(sRef, { deviceId, sessionId: state.sessionId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+                // 寫入／接管會話：以 sessionId 作為唯一標記（若規則不允許，降級為僅寫 deviceId）
+                try {
+                    await setDoc(sRef, { deviceId, sessionId: state.sessionId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+                } catch (errWrite) {
+                    console.warn('sessions 寫入含 sessionId 失敗，降級為僅寫 deviceId', errWrite);
+                    await setDoc(sRef, { deviceId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+                }
                 state.activeSessionUid = user.uid;
                 if (state.sessionHeartbeatHandle) clearInterval(state.sessionHeartbeatHandle);
                 state.sessionHeartbeatHandle = setInterval(async () => {
