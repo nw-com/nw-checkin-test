@@ -420,25 +420,46 @@
         // 初始化本機裝置ID（用於打卡紀錄與首次打卡裝置標記）
         (function initDeviceId(){
             try {
-                const key = 'device_id';
-                let id = localStorage.getItem(key);
-                if (!id) {
-                    const bytes = new Uint8Array(16);
-                    crypto.getRandomValues(bytes);
-                    id = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-                    localStorage.setItem(key, id);
-                }
-                state.deviceId = id;
+                const genRandom = (len = 32) => {
+                    try {
+                        const bytes = new Uint8Array(len/2);
+                        crypto.getRandomValues(bytes);
+                        return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    } catch (_) {
+                        const src = `${Date.now()}-${Math.random()}-${navigator.userAgent || 'UA'}-${screen?.width || 0}x${screen?.height || 0}`;
+                        let h = 0; for (let i=0;i<src.length;i++) { h = ((h<<5)-h) + src.charCodeAt(i); h |= 0; }
+                        return (h >>> 0).toString(16) + Math.random().toString(16).slice(2);
+                    }
+                };
+                const setCookie = (k,v) => { try { document.cookie = `${k}=${v}; path=/; max-age=${60*60*24*365}`; } catch (_) {} };
+                const getCookie = (k) => {
+                    try {
+                        const m = document.cookie.match(new RegExp('(?:^|; )'+k+'=([^;]*)'));
+                        return m ? decodeURIComponent(m[1]) : null;
+                    } catch (_) { return null; }
+                };
+                const readPersist = (key) => {
+                    try { const v = localStorage.getItem(key); if (v) return v; } catch (_) {}
+                    const c = getCookie(key); if (c) return c;
+                    try { const s = sessionStorage.getItem(key); if (s) return s; } catch (_) {}
+                    return null;
+                };
+                const writePersist = (key, val) => {
+                    try { localStorage.setItem(key, val); } catch (_) {}
+                    setCookie(key, val);
+                    try { sessionStorage.setItem(key, val); } catch (_) {}
+                };
+
+                const devKey = 'device_id';
+                let id = readPersist(devKey);
+                if (!id) { id = genRandom(32); writePersist(devKey, id); }
+                state.deviceId = id || 'unknown-device';
+
                 // 初始化穩定 sessionId：同裝置分頁共享，允許共存
                 const sKey = 'session_id';
-                let sid = localStorage.getItem(sKey);
-                if (!sid) {
-                    const sBytes = new Uint8Array(16);
-                    crypto.getRandomValues(sBytes);
-                    sid = Array.from(sBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-                    localStorage.setItem(sKey, sid);
-                }
-                state.sessionId = sid;
+                let sid = readPersist(sKey);
+                if (!sid) { sid = genRandom(32); writePersist(sKey, sid); }
+                state.sessionId = sid || `unknown-session-${Date.now()}`;
             } catch (e) {
                 console.warn('初始化裝置ID失敗', e);
                 state.deviceId = 'unknown-device';
@@ -479,9 +500,10 @@
                             const currentSession = (sess.sessionId || '').trim();
                             const myId = (state.deviceId || '').trim();
                             const mySession = (state.sessionId || '').trim();
-                            // 僅當 deviceId 變更為他裝時登出；
-                            // 同裝置不同分頁可共存（sessionId 不同亦不強制登出）
-                            if (currentId && myId && currentId !== myId) {
+                            // 主要條件：deviceId 變更為他裝時，立即登出
+                            // 若裝置識別失敗（unknown-device），則以 sessionId 差異作為後備條件
+                            const isUnknown = !myId || myId === 'unknown-device';
+                            if ((currentId && myId && currentId !== myId) || (isUnknown && currentSession && mySession && currentSession !== mySession)) {
                                 try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
                                 try { signOut(auth); } catch (_) {}
                             }
@@ -501,8 +523,11 @@
                             const snapLatest = await getDoc(sRef);
                             const data = snapLatest.data() || {};
                             const currentId = (data.deviceId || '').trim();
+                            const currentSession = (data.sessionId || '').trim();
                             const myId = (state.deviceId || '').trim();
-                            if (currentId && myId && currentId !== myId) {
+                            const mySession = (state.sessionId || '').trim();
+                            const isUnknown = !myId || myId === 'unknown-device';
+                            if ((currentId && myId && currentId !== myId) || (isUnknown && currentSession && mySession && currentSession !== mySession)) {
                                 try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
                                 try { signOut(auth); } catch (_) {}
                             }
