@@ -415,6 +415,7 @@
             sessionHeartbeatHandle: null,
             sessionId: null,
             sessionPollHandle: null,
+            forcedLogoutInProgress: false,
         };
         
         // 初始化本機裝置ID（用於打卡紀錄與首次打卡裝置標記）
@@ -509,8 +510,18 @@
                             // 若裝置識別失敗（unknown-device），則以 sessionId 差異作為後備條件
                             const isUnknown = !myId || myId === 'unknown-device';
                             if ((currentId && myId && currentId !== myId) || (isUnknown && currentSession && mySession && currentSession !== mySession)) {
-                                try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
-                                try { signOut(auth); } catch (_) {}
+                                if (!state.forcedLogoutInProgress) {
+                                    state.forcedLogoutInProgress = true;
+                                    try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
+                                    try { signOut(auth); } catch (_) {}
+                                    // UI 後備：立即切換到登入頁（避免某些環境 signOut 回調延遲）
+                                    try {
+                                        const loginPage = document.getElementById('login-page');
+                                        const appContainer = document.getElementById('app-container');
+                                        loginPage?.classList.remove('hide');
+                                        appContainer?.classList.add('hide');
+                                    } catch (_) {}
+                                }
                             }
                         }, (error) => {
                             console.warn('sessions onSnapshot 錯誤', error);
@@ -533,8 +544,18 @@
                             const mySession = (state.sessionId || '').trim();
                             const isUnknown = !myId || myId === 'unknown-device';
                             if ((currentId && myId && currentId !== myId) || (isUnknown && currentSession && mySession && currentSession !== mySession)) {
-                                try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
-                                try { signOut(auth); } catch (_) {}
+                                if (!state.forcedLogoutInProgress) {
+                                    state.forcedLogoutInProgress = true;
+                                    try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
+                                    try { signOut(auth); } catch (_) {}
+                                    // UI 後備
+                                    try {
+                                        const loginPage = document.getElementById('login-page');
+                                        const appContainer = document.getElementById('app-container');
+                                        loginPage?.classList.remove('hide');
+                                        appContainer?.classList.add('hide');
+                                    } catch (_) {}
+                                }
                             }
                         } catch (_) {}
                     }, 5000);
@@ -1514,6 +1535,7 @@
                         clearInterval(state.sessionPollHandle);
                         state.sessionPollHandle = null;
                     }
+                    state.forcedLogoutInProgress = false;
                     // 非登入狀態顯示控制
                     if (state.inPasswordResetMode && state.passwordResetOobCode) {
                         renderResetPasswordPage(state.passwordResetOobCode);
