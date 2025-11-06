@@ -107,8 +107,9 @@ service cloud.firestore {
     match /sessions/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow create, update: if request.auth != null && request.auth.uid == userId &&
-        request.resource.data.keys().hasOnly(['deviceId','createdAt','updatedAt']) &&
+        request.resource.data.keys().hasOnly(['deviceId','sessionId','createdAt','updatedAt']) &&
         (request.resource.data.deviceId == null || request.resource.data.deviceId is string) &&
+        (request.resource.data.sessionId == null || request.resource.data.sessionId is string) &&
         (request.resource.data.createdAt == null || request.resource.data.createdAt is timestamp) &&
         (request.resource.data.updatedAt == null || request.resource.data.updatedAt is timestamp);
       // 允許本人刪除（登出或清理時）

@@ -413,6 +413,7 @@
             // 單裝置登入心跳控制
             activeSessionUid: null,
             sessionHeartbeatHandle: null,
+            sessionId: null,
         };
         
         // 初始化本機裝置ID（用於打卡紀錄與首次打卡裝置標記）
@@ -427,9 +428,20 @@
                     localStorage.setItem(key, id);
                 }
                 state.deviceId = id;
+                // 初始化穩定 sessionId：同裝置分頁共享，允許共存
+                const sKey = 'session_id';
+                let sid = localStorage.getItem(sKey);
+                if (!sid) {
+                    const sBytes = new Uint8Array(16);
+                    crypto.getRandomValues(sBytes);
+                    sid = Array.from(sBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    localStorage.setItem(sKey, sid);
+                }
+                state.sessionId = sid;
             } catch (e) {
                 console.warn('初始化裝置ID失敗', e);
                 state.deviceId = 'unknown-device';
+                state.sessionId = `unknown-session-${Date.now()}`;
             }
         })();
 
@@ -437,25 +449,18 @@
         async function startSingleDeviceSession(user) {
             try {
                 const deviceId = state.deviceId || 'unknown-device';
+                // 使用穩定的本機 sessionId，讓同裝置的不同分頁共存
+                try {
+                    const sKey = 'session_id';
+                    const sid = localStorage.getItem(sKey);
+                    if (sid) state.sessionId = sid;
+                } catch (_) {}
                 const { doc, getDoc, setDoc, serverTimestamp } = window.__fs || {};
                 const db = window.__db;
                 if (!db || !doc || !getDoc || !setDoc) return true;
                 const sRef = doc(db, 'sessions', user.uid);
-                const snap = await getDoc(sRef);
-                const now = Date.now();
-                const THRESHOLD_MS = 2 * 60 * 1000; // 活躍會話時間窗（2分鐘）
-                if (snap.exists()) {
-                    const data = snap.data() || {};
-                    const otherId = (data.deviceId || '').trim();
-                    const updatedAt = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : 0;
-                    const isRecent = updatedAt && (now - updatedAt) < THRESHOLD_MS;
-                    if (otherId && otherId !== deviceId && isRecent) {
-                        showToast('此帳號已在其他裝置使用，請先在原裝置登出或稍候再試', true);
-                        await signOut(auth);
-                        return false;
-                    }
-                }
-                await setDoc(sRef, { deviceId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+                // 寫入／接管會話：以 sessionId 作為唯一標記，允許新裝置接管並讓舊裝置自動登出
+                await setDoc(sRef, { deviceId, sessionId: state.sessionId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
                 state.activeSessionUid = user.uid;
                 if (state.sessionHeartbeatHandle) clearInterval(state.sessionHeartbeatHandle);
                 state.sessionHeartbeatHandle = setInterval(async () => {
@@ -470,7 +475,11 @@
                         const unsubscribeSession = onSnapshot(sRef, (docSnap) => {
                             const sess = docSnap.data() || {};
                             const currentId = (sess.deviceId || '').trim();
+                            const currentSession = (sess.sessionId || '').trim();
                             const myId = (state.deviceId || '').trim();
+                            const mySession = (state.sessionId || '').trim();
+                            // 僅當 deviceId 變更為他裝時登出；
+                            // 同裝置不同分頁可共存（sessionId 不同亦不強制登出）
                             if (currentId && myId && currentId !== myId) {
                                 try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
                                 try { signOut(auth); } catch (_) {}
