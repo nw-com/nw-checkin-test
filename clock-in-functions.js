@@ -135,30 +135,114 @@ function updateStatusDisplay() {
     // 更新儀表板狀態
     updateDashboardStatus();
     
-    // 更新打卡狀態顯示
+    // 更新打卡狀態顯示（嚴格依目前社區過濾）
     const statusText = document.getElementById('status-text');
     if (statusText) {
-        // 強制檢查當前用戶的打卡狀態
         if (window.__auth?.currentUser) {
             const userId = window.__auth.currentUser.uid;
-            const { doc, getDoc } = window.__fs;
-            const userRef = doc(window.__db, 'users', userId);
-            getDoc(userRef).then(userDoc => {
-                if (userDoc.exists() && userDoc.data().clockInStatus) {
-                    const data = userDoc.data();
-                    state.clockInStatus = data.clockInStatus;
-                    state.outboundLocation = data.outboundLocation || null;
-                    state.dutyType = data.dutyType || null;
-                    state.leaveReason = data.leaveReason || null;
-                    state.leaveStatus = data.leaveStatus || null;
+            const fs = window.__fs || {};
+            const db = window.__db;
+            const { collection, query, where, orderBy, limit, getDocs, doc, getDoc } = fs;
+            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+            (async () => {
+                let shown = false;
+                // 優先：使用社區限制查詢最新紀錄
+                try {
+                    if (db && collection && query && where && orderBy && limit && getDocs) {
+                        let q;
+                        if (comm && (comm.id || comm.code || comm.communityCode)) {
+                            if (comm.id) {
+                                q = query(
+                                    collection(db, 'clockInRecords'),
+                                    where('userId','==', userId),
+                                    where('communityId','==', comm.id),
+                                    orderBy('timestamp','desc'),
+                                    limit(1)
+                                );
+                            } else {
+                                const ccode = (comm.code || comm.communityCode);
+                                q = query(
+                                    collection(db, 'clockInRecords'),
+                                    where('userId','==', userId),
+                                    where('communityCode','==', ccode),
+                                    orderBy('timestamp','desc'),
+                                    limit(1)
+                                );
+                            }
+                            const snap = await getDocs(q);
+                            if (!snap.empty) {
+                                const r = snap.docs[0].data();
+                                state.clockInStatus = r.type || 'none';
+                                state.outboundLocation = r.locationName || null;
+                                state.dutyType = r.dutyType || null;
+                                updateStatusTextAndStyle(statusText, statusDisplay);
+                                shown = true;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    const expected = ['permission-denied','failed-precondition','invalid-argument'];
+                    const logFn = expected.includes(e?.code) ? console.warn : console.error;
+                    logFn('個人狀態（社區限制）查詢失敗:', e?.code, e?.message || e);
                 }
-                
-                // 根據狀態更新顯示
-                updateStatusTextAndStyle(statusText, statusDisplay);
-            }).catch(error => {
-                console.error("獲取用戶狀態失敗:", error);
-                updateStatusTextAndStyle(statusText, statusDisplay);
-            });
+
+                // 備援：抓取最近 N 筆再前端過濾（僅當前社區）
+                if (!shown) {
+                    try {
+                        if (db && collection && query && orderBy && limit && getDocs) {
+                            const snap = await getDocs(query(collection(db, 'clockInRecords'), orderBy('timestamp','desc'), limit(200)));
+                            const cid = (comm && comm.id) ? String(comm.id).trim() : '';
+                            const ccode = (comm && (comm.code || comm.communityCode)) ? String(comm.code || comm.communityCode).trim() : '';
+                            const my = snap.docs.find(d => {
+                                const r = d.data() || {};
+                                if (r.userId !== userId) return false;
+                                const rcid = (r.communityId || '').trim();
+                                const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                                if (cid && rcid && rcid === cid) return true;
+                                if (ccode && rcode && rcode === ccode) return true;
+                                // 未設定社區時，允許顯示（例如首頁或無社區上下文）
+                                if (!comm) return true;
+                                return false;
+                            });
+                            if (my) {
+                                const r = my.data();
+                                state.clockInStatus = r.type || 'none';
+                                state.outboundLocation = r.locationName || null;
+                                state.dutyType = r.dutyType || null;
+                                updateStatusTextAndStyle(statusText, statusDisplay);
+                                shown = true;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('個人狀態備援查詢失敗', e);
+                    }
+                }
+
+                // 最終：讀取 users 狀態，僅在無社區上下文時使用；有社區但未找到匹配則顯示「尚未打卡」
+                if (!shown) {
+                    try {
+                        if (db && doc && getDoc) {
+                            const userRef = doc(db, 'users', userId);
+                            const userDoc = await getDoc(userRef);
+                            if (!comm && userDoc.exists() && userDoc.data().clockInStatus) {
+                                const data = userDoc.data();
+                                state.clockInStatus = data.clockInStatus;
+                                state.outboundLocation = data.outboundLocation || null;
+                                state.dutyType = data.dutyType || null;
+                                state.leaveReason = data.leaveReason || null;
+                                state.leaveStatus = data.leaveStatus || null;
+                            } else {
+                                // 有社區但找不到對應紀錄：視為社區內「尚未打卡」
+                                state.clockInStatus = 'none';
+                            }
+                        }
+                    } catch (error) {
+                        console.error('獲取用戶狀態失敗:', error);
+                    } finally {
+                        updateStatusTextAndStyle(statusText, statusDisplay);
+                    }
+                }
+            })();
         } else {
             updateStatusTextAndStyle(statusText, statusDisplay);
         }
