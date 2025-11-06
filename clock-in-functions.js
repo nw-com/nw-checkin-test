@@ -69,63 +69,43 @@ if (typeof state.autoSettingsErrorPromptShown === 'undefined') {
 function updateStatusTextAndStyle(statusText, statusDisplay) {
     switch(state.clockInStatus) {
         case '上班':
-            statusText.textContent = '上班中-辦公室';
+            statusText.textContent = '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '下班':
-            statusText.textContent = '已下班';
+            statusText.textContent = '下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-red-100 text-red-800';
             break;
         case '已下班-未打卡':
-            statusText.textContent = '已下班-未打卡';
+            statusText.textContent = '下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
             break;
         case '外出':
-            let outboundText = '外出中';
-            if (state.outboundLocation) {
-                outboundText = `外出-${state.outboundLocation}`;
-            }
-            statusText.textContent = outboundText;
+            statusText.textContent = '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-emerald-100 text-emerald-800';
             break;
         case '抵達':
-            let arriveText = '抵達';
-            if (state.outboundLocation) {
-                arriveText = `抵達-${state.outboundLocation}`;
-            }
-            statusText.textContent = arriveText;
+            statusText.textContent = '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '離開':
-            let leaveText = '離開';
-            if (state.outboundLocation) {
-                leaveText = `離開-${state.outboundLocation}`;
-            }
-            statusText.textContent = leaveText;
+            statusText.textContent = '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '返回':
-            statusText.textContent = '返回-辦公室';
+            statusText.textContent = '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '臨時請假':
-            let leaveReasonText = (state.leaveStatus === 'approved') ? '已請假' : '請假申請';
-            if (state.leaveReason) {
-                leaveReasonText = `${leaveReasonText}-${state.leaveReason}`;
-            }
-            statusText.textContent = leaveReasonText;
+            statusText.textContent = '請假';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-orange-100 text-orange-800';
             break;
         case '特殊勤務':
-            let dutyText = '出勤中';
-            if (state.dutyType) {
-                dutyText = `出勤-${state.dutyType}`;
-            }
-            statusText.textContent = dutyText;
+            statusText.textContent = '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
             break;
         default:
-            statusText.textContent = '尚未打卡';
+            statusText.textContent = '下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
     }
 }
