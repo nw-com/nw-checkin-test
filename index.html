@@ -7198,6 +7198,33 @@
                 
                 mapLoader.classList.remove('hide');
                 state.currentLocation = null;
+                // 若前次已啟用位置監看，先解除避免重複監聽
+                try {
+                    if (state.clockinGeoWatchId) {
+                        navigator.geolocation.clearWatch(state.clockinGeoWatchId);
+                        state.clockinGeoWatchId = null;
+                    }
+                } catch (_) {}
+                // 綁定頁面可見/焦點事件：回到畫面時強制重新定位一次
+                if (!state.clockinVisibilityEventsBound) {
+                    const forceRefreshPosition = () => {
+                        try {
+                            navigator.geolocation.getCurrentPosition((pos) => {
+                                const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                                state.currentLocation = coords;
+                                if (state.clockinMap) {
+                                    try { state.clockinMap.panTo(coords); } catch (_) {}
+                                }
+                                if (state.clockinMarker) {
+                                    try { state.clockinMarker.setPosition(coords); } catch (_) {}
+                                }
+                            }, () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                        } catch (_) {}
+                    };
+                    document.addEventListener('visibilitychange', () => { if (!document.hidden) forceRefreshPosition(); });
+                    window.addEventListener('focus', forceRefreshPosition);
+                    state.clockinVisibilityEventsBound = true;
+                }
                 
                 // Geolocation requires secure context in modern browsers
                 if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
@@ -7258,16 +7285,31 @@
                         disableDefaultUI: true 
                     });
                     
-                    new google.maps.Marker({ 
+                    const marker = new google.maps.Marker({ 
                         position: coords, 
                         map: map 
                     });
+                    // 保存引用以供後續更新
+                    state.clockinMap = map;
+                    state.clockinMarker = marker;
                     // 描繪打卡設定半徑範圍（若取得中心與半徑）
                     if (center && typeof radius === 'number') {
                         try { state.clockinRadiusCircle && state.clockinRadiusCircle.setMap(null); } catch (_) {}
                         state.clockinRadiusCircle = new google.maps.Circle({ map, center, radius, strokeColor:'#FF0000', strokeOpacity:0.8, strokeWeight:2, fillColor:'#FF0000', fillOpacity:0.1 });
                     }
                     
+                    // 啟用持續位置監看，隨移動即時更新並置中
+                    try {
+                        state.clockinGeoWatchId = navigator.geolocation.watchPosition((pos) => {
+                            const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                            state.currentLocation = c;
+                            try { map.panTo(c); } catch (_) {}
+                            try { marker.setPosition(c); } catch (_) {}
+                        }, (err) => {
+                            console.warn('watchPosition error:', err);
+                        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+                    } catch (_) {}
+
                     mapLoader.classList.add('hide');
                 } catch (error) {
                     console.error("初始化地圖時發生錯誤:", error);
@@ -12451,6 +12493,17 @@ function renderTrackingLeave(container) {
                             statusText = '請假申請';
                         }
 
+                        // 追蹤列表的狀態行僅顯示：上班 / 下班 / 請假
+                        const simplifyStatusForTracking = (s) => {
+                            if (typeof s !== 'string') return '未打卡';
+                            const t = s.trim();
+                            if (t.includes('請假')) return '請假';
+                            if (t.includes('下班') || t.includes('已下班')) return '下班';
+                            if (t.includes('上班') || t.includes('外出') || t.includes('抵達') || t.includes('離開') || t.includes('返回') || t.includes('出勤') || t.includes('特殊勤務')) return '上班';
+                            return '未打卡';
+                        };
+                        statusText = simplifyStatusForTracking(statusText);
+
                         const ts = latestRecord?.timestamp && latestRecord.timestamp.toDate ? latestRecord.timestamp.toDate() : (latestRecord?.timestamp ? new Date(latestRecord.timestamp) : (user.lastClockInTime?.toDate ? user.lastClockInTime.toDate() : null));
                         // 定位異常標記（以服務社區半徑判斷）；若於其他社區則改顯示提示並抑制異常
                         let abnormalText = '';
@@ -12491,7 +12544,12 @@ function renderTrackingLeave(container) {
                     Promise.all(augmentedPromises).then((augmentedUsers) => {
                         // 排序對齊「所有同仁狀態」：狀態優先級 -> 最近更新時間(新→舊) -> 姓名
                         const statusPriority = (u) => {
-                        const display = u.__statusText || getStatusDisplayText(u.clockInStatus || '未打卡', (u.clockInStatus === '外出' && u.outboundLocation ? u.outboundLocation : (u.lastLocation?.address || null)), u.dutyType);
+                        // 排序使用完整狀態文字，避免簡化後失去細節
+                        const display = getStatusDisplayText(
+                            (u.__latestRecord?.type || u.clockInStatus || '未打卡'),
+                            (u.__latestRecord?.locationName || (u.clockInStatus === '外出' && u.outboundLocation ? u.outboundLocation : (u.lastLocation?.address || null))),
+                            (u.__latestRecord?.dutyType || u.dutyType)
+                        );
                             let isLeave = (u.clockInStatus === '臨時請假') || (display.includes('請假'));
                             if (!isLeave) {
                                 const leave = u.leaveStatus || '';
