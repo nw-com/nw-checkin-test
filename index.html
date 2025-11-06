@@ -463,6 +463,26 @@
                         await setDoc(sRef, { updatedAt: serverTimestamp() }, { merge: true });
                     } catch (_) {}
                 }, 45000);
+                // 監聽會話文檔：若 deviceId 變更為他裝，立即登出本裝置
+                try {
+                    const { onSnapshot } = window.__fs || {};
+                    if (onSnapshot) {
+                        const unsubscribeSession = onSnapshot(sRef, (docSnap) => {
+                            const sess = docSnap.data() || {};
+                            const currentId = (sess.deviceId || '').trim();
+                            const myId = (state.deviceId || '').trim();
+                            if (currentId && myId && currentId !== myId) {
+                                try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
+                                try { signOut(auth); } catch (_) {}
+                            }
+                        }, (error) => {
+                            console.warn('sessions onSnapshot 錯誤', error);
+                        });
+                        state.activeListeners.push(unsubscribeSession);
+                    }
+                } catch (e) {
+                    console.warn('建立 sessions 監聽失敗', e);
+                }
                 return true;
             } catch (e) {
                 console.warn('啟動單裝置會話失敗，略過限制：', e);
