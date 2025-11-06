@@ -6607,26 +6607,35 @@
                     const { Timestamp } = window.__fs || {};
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
-                    // 優先於目前社區範圍查詢，避免跨社區顯示（無索引時退回前端過濾）
-                    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                    // 依目前社區範圍查詢，若 state 未設則使用 URL 參數作為備援
+                    const commState = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                    let effCommId = commState?.id || null;
+                    let effCommCode = (commState?.code || commState?.communityCode) || null;
+                    try {
+                        const params = new URLSearchParams(window.location.search);
+                        const urlId = params.get('communityId') || null;
+                        const urlCode = params.get('communityCode') || params.get('communityId') || null;
+                        if (!effCommId && urlId) effCommId = urlId;
+                        if (!effCommCode && urlCode) effCommCode = urlCode;
+                    } catch (_) {}
                     let q = query(
                         recordsRef,
                         where("userId", "==", state.currentUser.uid),
                         where("timestamp", ">=", startTS),
                         where("timestamp", "<=", endTS)
                     );
-                    if (comm && (comm.id || comm.code || comm.communityCode)) {
+                    if (effCommId || effCommCode) {
                         try {
-                            if (comm.id) {
+                            if (effCommId) {
                                 q = query(
                                     recordsRef,
                                     where("userId", "==", state.currentUser.uid),
-                                    where("communityId", "==", comm.id),
+                                    where("communityId", "==", effCommId),
                                     where("timestamp", ">=", startTS),
                                     where("timestamp", "<=", endTS)
                                 );
                             } else {
-                                const ccode = (comm.code || comm.communityCode);
+                                const ccode = effCommCode;
                                 q = query(
                                     recordsRef,
                                     where("userId", "==", state.currentUser.uid),
@@ -6707,12 +6716,21 @@
                         const filtered = records.filter(r => {
                             const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null);
                             if (!ts) return false;
-                            // 社區過濾：僅顯示目前社區的紀錄
-                            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                            // 社區過濾：僅顯示目前社區的紀錄（state 或 URL 參數）
+                            const commState = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                            let effCommId = commState?.id || null;
+                            let effCommCode = (commState?.code || commState?.communityCode) || null;
+                            try {
+                                const params = new URLSearchParams(window.location.search);
+                                const urlId = params.get('communityId') || null;
+                                const urlCode = params.get('communityCode') || params.get('communityId') || null;
+                                if (!effCommId && urlId) effCommId = urlId;
+                                if (!effCommCode && urlCode) effCommCode = urlCode;
+                            } catch (_) {}
                             const byTime = ts >= startOfMonth && ts <= endOfMonth;
-                            if (!comm) return byTime; // 無社區脈絡時僅依時間
-                            const cid = (comm.id || '').trim();
-                            const ccode = (comm.code || comm.communityCode || '').trim();
+                            if (!effCommId && !effCommCode) return byTime; // 無社區脈絡時僅依時間
+                            const cid = String(effCommId || '').trim();
+                            const ccode = String(effCommCode || '').trim();
                             const rcid = (r.communityId || '').trim();
                             const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
                             const matchComm = (cid ? rcid === cid : false) || (ccode ? rcode === ccode : false);
@@ -11179,8 +11197,16 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                 try {
                     if (selectedUserId === 'all') {
                         const base = [where('timestamp', '>=', startTS), where('timestamp', '<=', endTS)];
-                        // 不在查詢層面加 communityId；改以前端 recordMatchesCommunity 過濾
-                        q = query(recordsRef, ...base);
+                        // 優先在查詢層面加入社區條件（若有），減少跨社區資料混入
+                        const cid = (currentComm?.id || '').trim();
+                        const ccode = (currentComm?.code || currentComm?.communityCode || '').trim();
+                        if (cid) {
+                            q = query(recordsRef, ...base, where('communityId', '==', cid));
+                        } else if (ccode) {
+                            q = query(recordsRef, ...base, where('communityCode', '==', ccode));
+                        } else {
+                            q = query(recordsRef, ...base);
+                        }
                     } else {
                         const base = [where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS)];
                         // 優先在查詢層面加入社區條件（若有），提高精準度
@@ -11196,6 +11222,7 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                     }
                 } catch (_) {
                     if (selectedUserId === 'all') {
+                        // 後備：僅時間範圍，後續以前端嚴格社區過濾
                         q = query(recordsRef, where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
                     } else {
                         q = query(recordsRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
