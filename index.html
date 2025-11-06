@@ -518,8 +518,15 @@
                                     try {
                                         const loginPage = document.getElementById('login-page');
                                         const appContainer = document.getElementById('app-container');
+                                        const resetPasswordPage = document.getElementById('reset-password-page');
+                                        const bodyEl = document.body;
                                         loginPage?.classList.remove('hide');
                                         appContainer?.classList.add('hide');
+                                        resetPasswordPage?.classList.add('hide');
+                                        // 背景色切換為登出狀態（紅色），避免看起來仍是灰色主頁
+                                        bodyEl?.classList.remove('bg-gray-100');
+                                        bodyEl?.classList.add('bg-red-600');
+                                        try { showLoading(false); } catch (_) {}
                                     } catch (_) {}
                                 }
                             }
@@ -552,8 +559,14 @@
                                     try {
                                         const loginPage = document.getElementById('login-page');
                                         const appContainer = document.getElementById('app-container');
+                                        const resetPasswordPage = document.getElementById('reset-password-page');
+                                        const bodyEl = document.body;
                                         loginPage?.classList.remove('hide');
                                         appContainer?.classList.add('hide');
+                                        resetPasswordPage?.classList.add('hide');
+                                        bodyEl?.classList.remove('bg-gray-100');
+                                        bodyEl?.classList.add('bg-red-600');
+                                        try { showLoading(false); } catch (_) {}
                                     } catch (_) {}
                                 }
                             }
