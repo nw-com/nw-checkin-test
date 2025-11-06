@@ -4133,9 +4133,22 @@
                     // 今日待審假單（僅本人）
                     let pendingLeaves = [];
                     try {
-                        const lq = query(collection(db, 'leaves'), where('userId','==', user.uid), where('status','==','pending'), where('targetTime','>=', tsStart), where('targetTime','<=', tsEnd));
+                        const comm = state.currentCommunity || null;
+                        let lq;
+                        try {
+                            const baseConds = [where('userId','==', user.uid), where('status','==','pending'), where('targetTime','>=', tsStart), where('targetTime','<=', tsEnd)];
+                            if (comm?.id) baseConds.push(where('communityId','==', comm.id));
+                            else if (comm?.code || comm?.communityCode) baseConds.push(where('communityCode','==', (comm.code || comm.communityCode)));
+                            lq = query(collection(db, 'leaves'), ...baseConds);
+                        } catch (_) {
+                            lq = query(collection(db, 'leaves'), where('userId','==', user.uid), where('status','==','pending'), where('targetTime','>=', tsStart), where('targetTime','<=', tsEnd));
+                        }
                         const lsnap = await getDocs(lq);
                         lsnap.forEach(d => pendingLeaves.push({ id: d.id, ...d.data() }));
+                        // 前端嚴格社區過濾（避免索引不足時抓到跨社區）
+                        if (comm) {
+                            pendingLeaves = pendingLeaves.filter(l => recordMatchesCommunityStrict(l, comm));
+                        }
                     } catch (_) {}
 
                     // 計算異常
@@ -4749,6 +4762,8 @@
                                         const st = toDate(data.startTime);
                                         const et = toDate(data.endTime);
                                         if (!uid || !uidSet.has(uid)) return;
+                                        // 嚴格社區過濾：僅計入目前社區的請假
+                                        if (!recordMatchesCommunityStrict(data, state.currentCommunity)) return;
                                         if (st && et && st <= todayEnd && et >= todayStart) {
                                             leavesByUser[uid] = true;
                                         }
@@ -7190,9 +7205,22 @@
                     // 請假資料（覆蓋該月任何一天）
                     let leaves = [];
                     try {
-                        const lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid));
+                        const comm = state.currentCommunity || null;
+                        let lq;
+                        try {
+                            if (comm?.id) {
+                                lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid), where('communityId','==', comm.id));
+                            } else if (comm?.code || comm?.communityCode) {
+                                lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid), where('communityCode','==', (comm.code || comm.communityCode)));
+                            } else {
+                                lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid));
+                            }
+                        } catch (_) {
+                            lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid));
+                        }
                         const ls = await getDocs(lq);
                         ls.forEach(doc => leaves.push({ id: doc.id, ...doc.data() }));
+                        if (comm) { leaves = leaves.filter(l => recordMatchesCommunityStrict(l, comm)); }
                     } catch(e) { console.warn('讀取請假失敗', e); }
 
                     // 特殊勤務（值班）資料
@@ -12091,9 +12119,22 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
 
                         let leaves = [];
                         try {
-                            const lq = query(collection(db, 'leaves'), where('userId','==', user.id));
+                            const comm = state.currentCommunity || null;
+                            let lq;
+                            try {
+                                if (comm?.id) {
+                                    lq = query(collection(db, 'leaves'), where('userId','==', user.id), where('communityId','==', comm.id));
+                                } else if (comm?.code || comm?.communityCode) {
+                                    lq = query(collection(db, 'leaves'), where('userId','==', user.id), where('communityCode','==', (comm.code || comm.communityCode)));
+                                } else {
+                                    lq = query(collection(db, 'leaves'), where('userId','==', user.id));
+                                }
+                            } catch (_) {
+                                lq = query(collection(db, 'leaves'), where('userId','==', user.id));
+                            }
                             const ls = await getDocs(lq);
                             ls.forEach(docSnap => leaves.push({ id: docSnap.id, ...docSnap.data() }));
+                            if (comm) { leaves = leaves.filter(l => recordMatchesCommunityStrict(l, comm)); }
                         } catch(e) { console.warn('讀取請假失敗', user.id, e); }
 
                         let duties = [];
@@ -12384,8 +12425,22 @@ function renderTrackingLeave(container) {
                     const status = statusFilter.value;
                     const date = dateFilter.value;
                     
-                    // 構建查詢
+                    // 構建查詢（限制在目前社區）
                     let leavesQuery = collection(db, 'leaves');
+                    const currentComm = state.currentCommunity || null;
+                    if (currentComm && (currentComm.id || currentComm.code || currentComm.communityCode)) {
+                        try {
+                            if (currentComm.id) {
+                                leavesQuery = query(leavesQuery, where('communityId','==', currentComm.id));
+                            } else {
+                                const ccode = (currentComm.code || currentComm.communityCode);
+                                leavesQuery = query(leavesQuery, where('communityCode','==', ccode));
+                            }
+                        } catch(_) {
+                            // 保留不含社區條件的查詢，稍後以前端過濾
+                            leavesQuery = collection(db, 'leaves');
+                        }
+                    }
                     
                     // 如果選擇了特定狀態
                     if (status !== 'all') {
@@ -12426,6 +12481,10 @@ function renderTrackingLeave(container) {
                             if (communityUserIds && communityUserIds.size > 0) {
                                 const uid = leave.userId || leave.userID || leave.uid;
                                 if (!communityUserIds.has(uid)) return;
+                            }
+                            // 嚴格社區過濾（避免跨社區資料顯示）
+                            if (currentComm && !recordMatchesCommunityStrict(leave, currentComm)) {
+                                return;
                             }
                             
                             // 若未勾選顯示已刪除，則過濾掉 deleted 記錄
