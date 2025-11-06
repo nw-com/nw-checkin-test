@@ -6036,6 +6036,7 @@
                                     const reasonType = typeEl.value;
                                     const reason = reasonType === '其他' ? (otherEl.value.trim() || '其他') : reasonType;
                                     const db = window.__db; const { addDoc, collection, Timestamp } = window.__fs;
+                                    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
                                     await addDoc(collection(db, 'leaves'), {
                                         userId: user.uid,
                                         reason,
@@ -6043,7 +6044,9 @@
                                         startTime: Timestamp.fromDate(startD),
                                         endTime: Timestamp.fromDate(endD),
                                         status: 'pending',
-                                        createdAt: Timestamp.fromDate(new Date())
+                                        createdAt: Timestamp.fromDate(new Date()),
+                                        ...(comm && comm.id ? { communityId: comm.id } : {}),
+                                        ...(comm && (comm.code || comm.communityCode) ? { communityCode: (comm.code || comm.communityCode) } : {})
                                     });
                                     try { showToast('已送出請假申請'); } catch(_){}
                                     close();
@@ -6219,7 +6222,23 @@
                         return;
                     }
                     const db = window.__db; const { collection, where, query, getDocs } = window.__fs;
-                    let q = query(collection(db, 'leaves'), where('userId', '==', user.uid));
+                    const leavesRef = collection(db, 'leaves');
+                    // 依目前社區限制範圍（索引缺失時退回前端過濾）
+                    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                    let q = query(leavesRef, where('userId', '==', user.uid));
+                    if (comm && (comm.id || comm.code || comm.communityCode)) {
+                        try {
+                            if (comm.id) {
+                                q = query(leavesRef, where('userId', '==', user.uid), where('communityId', '==', comm.id));
+                            } else {
+                                const ccode = (comm.code || comm.communityCode);
+                                q = query(leavesRef, where('userId', '==', user.uid), where('communityCode', '==', ccode));
+                            }
+                        } catch (_) {
+                            // 建立查詢失敗，保留基本查詢，稍後以前端過濾
+                            q = query(leavesRef, where('userId', '==', user.uid));
+                        }
+                    }
                     if (status !== 'all') { q = query(q, where('status', '==', status)); }
                     // 移除排序以避免 Firestore 索引需求，改用前端排序（若需要）
 
@@ -6250,13 +6269,21 @@
                         });
 
                         // 前端過濾與排序
+                        // 前端過濾：日期與社區
                         const filtered = leaves.filter(leave => {
                             if (selectedDate && nextDay) {
                                 const startTime = leave.startTime.toDate();
                                 const endTime = leave.endTime.toDate();
                                 return (startTime < nextDay && endTime > selectedDate);
                             }
-                            return true;
+                            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                            if (!comm) return true;
+                            const cid = (comm.id || '').trim();
+                            const ccode = (comm.code || comm.communityCode || '').trim();
+                            const lcId = (leave.communityId || '').trim();
+                            const lcCode = (leave.communityCode || '').trim();
+                            const matchComm = (cid ? lcId === cid : false) || (ccode ? lcCode === ccode : false);
+                            return matchComm;
                         }).sort((a, b) => {
                             const aTs = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
                             const bTs = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
@@ -6580,15 +6607,53 @@
                     const { Timestamp } = window.__fs || {};
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
-                    const q = query(
+                    // 優先於目前社區範圍查詢，避免跨社區顯示（無索引時退回前端過濾）
+                    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                    let q = query(
                         recordsRef,
                         where("userId", "==", state.currentUser.uid),
                         where("timestamp", ">=", startTS),
                         where("timestamp", "<=", endTS)
                     );
+                    if (comm && (comm.id || comm.code || comm.communityCode)) {
+                        try {
+                            if (comm.id) {
+                                q = query(
+                                    recordsRef,
+                                    where("userId", "==", state.currentUser.uid),
+                                    where("communityId", "==", comm.id),
+                                    where("timestamp", ">=", startTS),
+                                    where("timestamp", "<=", endTS)
+                                );
+                            } else {
+                                const ccode = (comm.code || comm.communityCode);
+                                q = query(
+                                    recordsRef,
+                                    where("userId", "==", state.currentUser.uid),
+                                    where("communityCode", "==", ccode),
+                                    where("timestamp", ">=", startTS),
+                                    where("timestamp", "<=", endTS)
+                                );
+                            }
+                        } catch (_) {
+                            // 建立 query 失敗（可能索引問題），保留基本 q，稍後以前端過濾
+                        }
+                    }
 
                     try {
-                        const querySnapshot = await getDocs(q);
+                        let querySnapshot;
+                        try {
+                            querySnapshot = await getDocs(q);
+                        } catch (e) {
+                            // 若因索引缺失導致查詢失敗，退回不含社區條件的基本查詢
+                            const baseQ = query(
+                                recordsRef,
+                                where("userId", "==", state.currentUser.uid),
+                                where("timestamp", ">=", startTS),
+                                where("timestamp", "<=", endTS)
+                            );
+                            querySnapshot = await getDocs(baseQ);
+                        }
                         const recordsListEl = document.getElementById('records-list');
                         if (!recordsListEl) return;
                         
@@ -6642,7 +6707,16 @@
                         const filtered = records.filter(r => {
                             const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null);
                             if (!ts) return false;
-                            return ts >= startOfMonth && ts <= endOfMonth;
+                            // 社區過濾：僅顯示目前社區的紀錄
+                            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                            const byTime = ts >= startOfMonth && ts <= endOfMonth;
+                            if (!comm) return byTime; // 無社區脈絡時僅依時間
+                            const cid = (comm.id || '').trim();
+                            const ccode = (comm.code || comm.communityCode || '').trim();
+                            const rcid = (r.communityId || '').trim();
+                            const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                            const matchComm = (cid ? rcid === cid : false) || (ccode ? rcode === ccode : false);
+                            return byTime && matchComm;
                         }).sort((a, b) => {
                             const timeA = a.timestamp?.toDate?.() || (a.timestamp ? new Date(a.timestamp) : new Date(0));
                             const timeB = b.timestamp?.toDate?.() || (b.timestamp ? new Date(b.timestamp) : new Date(0));

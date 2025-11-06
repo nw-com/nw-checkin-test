@@ -863,6 +863,7 @@ function openTempLeaveModal(el) {
             if (isOther && !reasonText) { showToast('請輸入自定義事由', true); showLoading(false); return; }
 
             const { addDoc, collection, updateDoc, doc, serverTimestamp, Timestamp } = window.__fs;
+            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
             await addDoc(collection(window.__db, 'leaves'), {
                 userId: user.uid,
                 userName: (state.currentUserData?.name || user?.displayName || user?.email || ''),
@@ -871,7 +872,9 @@ function openTempLeaveModal(el) {
                 startTime: Timestamp.fromDate(startDt),
                 endTime: Timestamp.fromDate(endDt),
                 status: 'pending',
-                createdAt: serverTimestamp()
+                createdAt: serverTimestamp(),
+                ...(comm && comm.id ? { communityId: comm.id } : {}),
+                ...(comm && (comm.code || comm.communityCode) ? { communityCode: (comm.code || comm.communityCode) } : {})
             });
 
             await updateDoc(doc(window.__db, 'users', user.uid), {
