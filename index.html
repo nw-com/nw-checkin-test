@@ -414,6 +414,7 @@
             activeSessionUid: null,
             sessionHeartbeatHandle: null,
             sessionId: null,
+            sessionPollHandle: null,
         };
         
         // 初始化本機裝置ID（用於打卡紀錄與首次打卡裝置標記）
@@ -491,6 +492,24 @@
                     }
                 } catch (e) {
                     console.warn('建立 sessions 監聽失敗', e);
+                }
+                // 輔助輪詢：每 5 秒驗證一次（避免極少數情況下快照未觸發）
+                try {
+                    if (state.sessionPollHandle) clearInterval(state.sessionPollHandle);
+                    state.sessionPollHandle = setInterval(async () => {
+                        try {
+                            const snapLatest = await getDoc(sRef);
+                            const data = snapLatest.data() || {};
+                            const currentId = (data.deviceId || '').trim();
+                            const myId = (state.deviceId || '').trim();
+                            if (currentId && myId && currentId !== myId) {
+                                try { showToast('帳號已在另一裝置登入，本裝置已自動登出', true); } catch (_) {}
+                                try { signOut(auth); } catch (_) {}
+                            }
+                        } catch (_) {}
+                    }, 5000);
+                } catch (e) {
+                    console.warn('建立 sessions 輪詢失敗', e);
                 }
                 return true;
             } catch (e) {
@@ -1460,6 +1479,10 @@
                         clearInterval(state.sessionHeartbeatHandle);
                         state.sessionHeartbeatHandle = null;
                         state.activeSessionUid = null;
+                    }
+                    if (state.sessionPollHandle) {
+                        clearInterval(state.sessionPollHandle);
+                        state.sessionPollHandle = null;
                     }
                     // 非登入狀態顯示控制
                     if (state.inPasswordResetMode && state.passwordResetOobCode) {
