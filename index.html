@@ -6773,6 +6773,20 @@
                             const abnormalHtml = (abnormalInfo && abnormalInfo.isAbnormal)
                                 ? `<div class="mt-1 flex items-center"><span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700 border border-red-200">打卡位置異常</span>${abnormalInfo.detail ? `<span class="ml-2 text-xs text-gray-500">${abnormalInfo.detail}</span>` : ''}</div>`
                                 : '';
+                            // 決定社區徽章顯示內容（優先使用短名）
+                            const byId = state.communitiesById || {};
+                            const rcid = (record.communityId || '').trim();
+                            const rcode = (record.communityCode || record.dutyCommunityCode || '').trim();
+                            let commLabel = '';
+                            if (rcid && byId[rcid]) {
+                                const cm = byId[rcid];
+                                commLabel = (cm.shortName || cm.name || '').trim();
+                                if (!commLabel) commLabel = rcode || rcid;
+                            } else if (rcode) {
+                                const cm = Object.values(byId).find(c => (c.code || '').trim() === rcode);
+                                commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                            }
+                            const commBadge = commLabel ? `<span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200 inline-flex items-center"><i data-lucide="building-2" class="w-3 h-3 mr-1"></i>社區：${commLabel}</span>` : '';
                             card.innerHTML = `
                                 <div class="flex justify-between items-start">
                                     <div>
@@ -6780,6 +6794,7 @@
                                         <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
                                         ${abnormalHtml}
                                     </div>
+                                    <div class="ml-3">${commBadge}</div>
                                 </div>
                                 <div class="mt-2 flex space-x-2 overflow-x-auto">
                                     <button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
