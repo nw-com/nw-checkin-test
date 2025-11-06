@@ -1509,6 +1509,17 @@
                 if (user) {
                     bodyEl.classList.remove('bg-red-600');
                     bodyEl.classList.add('bg-gray-100');
+                    // 立即切換到主介面，避免登入後仍停留在登入頁（待資料載入完成再初始化）
+                    try {
+                        const loginPageNow = document.getElementById('login-page');
+                        const appContainerNow = document.getElementById('app-container');
+                        const resetPasswordPageNow = document.getElementById('reset-password-page');
+                        loginPageNow?.classList.add('hide');
+                        resetPasswordPageNow?.classList.add('hide');
+                        appContainerNow?.classList.remove('hide');
+                        showLoading(true);
+                    } catch (_) {}
+                    state.forcedLogoutInProgress = false;
                     state.currentUser = user;
                     startSingleDeviceSession(user).then((ok) => {
                         if (!ok) return; // 已被阻止登入
