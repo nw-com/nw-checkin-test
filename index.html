@@ -2319,13 +2319,9 @@
                                 // 若該打卡屬於其他社區，則不視為此社區的定位異常
                                 if (markLocation) {
                                     outerLoc: for (const u of communityUsers) {
-                                        const recs = recordsByUser[u.id] || [];
+                                        // 嚴格社區過濾：僅使用屬於當前社區的紀錄
+                                        const recs = (recordsByUser[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c));
                                         for (const r of recs) {
-                                            const recCommId = (r.communityId || '').trim();
-                                            const recCommCode = (r.communityCode || r.community?.code || '').trim();
-                                            const cCode = (c.code || c.communityCode || '').trim();
-                                            // 其他社區打卡不計入此社區定位異常
-                                            if ((recCommId && recCommId !== c.id) || (cCode && recCommCode && recCommCode !== cCode)) continue;
                                             const abnormal = computeRecordAbnormal(r, [c.id]);
                                             if (abnormal && abnormal.isAbnormal) { hasAbnormalLocation = true; break outerLoc; }
                                         }
@@ -2341,7 +2337,8 @@
 
                                 // 異常：今日存在重複上班或重複下班打卡
                                 outerDouble: for (const u of communityUsers) {
-                                    const recs = recordsByUser[u.id] || [];
+                                    // 嚴格社區過濾：僅計入當前社區的打卡紀錄
+                                    const recs = (recordsByUser[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c));
                                     let startCount = 0, endCount = 0;
                                     for (const r of recs) {
                                         const dt = r.timestamp?.toDate?.() ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
@@ -2757,7 +2754,17 @@
                                         const mapped = resolveCommunityIdByCode(u.serviceCommunityCode);
                                         if (mapped) svcIds = [mapped];
                                     }
-                                    const recs = recordsByUser[u.id] || [];
+                                    // 嚴格社區過濾：僅計入該員所屬社區的打卡紀錄
+                                    const recs = (recordsByUser[u.id] || []).filter(r => {
+                                        const rid = (r.communityId || '').trim();
+                                        const rcode = (r.communityCode || r.community?.code || '').trim();
+                                        const codeOne = (u.serviceCommunityCode || '').trim();
+                                        const svcIdsArr = Array.isArray(svcIds) ? svcIds : [];
+                                        const svcCodesArr = Array.isArray(u.serviceCommunityCodes) ? u.serviceCommunityCodes : [];
+                                        const idMatch = svcIdsArr.length > 0 ? svcIdsArr.includes(rid) : false;
+                                        const codeMatch = codeOne ? (rcode === codeOne) : (svcCodesArr.length > 0 ? svcCodesArr.includes(rcode) : false);
+                                        return idMatch || codeMatch;
+                                    });
 
                                     // 位置異常
                                     if (markLocation && svcIds && svcIds.length > 0) {
