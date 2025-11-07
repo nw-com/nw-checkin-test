@@ -76,16 +76,19 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             const rcode = (rec.communityCode || rec.community?.code || '').trim();
             if (rcid && byId[rcid]) {
                 const cm = byId[rcid];
-                commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                // 僅使用短名/名稱，避免顯示社區編號或ID
+                commLabel = (cm.shortName || cm.name || '').trim();
             } else if (rcode) {
                 const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
-                commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                // 僅在能映射到社區時使用；避免顯示社區編號
+                commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : '';
             }
         }
     } catch (_) {}
     if (!commLabel) {
         const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-        commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+        // 僅使用短名/名稱作為顯示，避免顯示社區編號或ID
+        commLabel = comm && ((comm.shortName || comm.name) || '') || '';
     }
     switch(state.clockInStatus) {
         case '上班':
@@ -281,6 +284,17 @@ function updateDashboardStatus() {
     (async () => {
         // 確保社區快取已載入，讓狀態文字能插入社區名稱
         try { if (typeof ensureCommunitiesCache === 'function') { await ensureCommunitiesCache(); } } catch (_) {}
+        // 等待目前社區就緒（短名或名稱），最多約1秒
+        try {
+            let tries = 0;
+            while (tries < 10) {
+                const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                const ready = !!(comm && (comm.shortName || comm.name));
+                if (ready) break;
+                await new Promise(r => setTimeout(r, 100));
+                tries++;
+            }
+        } catch (_) {}
         const { collection, query, where, orderBy, limit, getDocs, doc, getDoc } = window.__fs;
         const userId = window.__auth?.currentUser?.uid || state.currentUser?.uid;
         if (!userId) {
@@ -336,10 +350,12 @@ function updateDashboardStatus() {
                     let commLabel = '';
                     if (rcid && byId[rcid]) {
                         const cm = byId[rcid];
-                        commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                        // 僅使用短名/名稱，避免顯示社區編號或ID
+                        commLabel = (cm.shortName || cm.name || '').trim();
                     } else if (rcode) {
                         const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
-                        commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                        // 僅在能映射到社區時使用；避免顯示社區編號
+                        commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : '';
                     }
                     if (commLabel) {
                         if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
@@ -405,10 +421,12 @@ function updateDashboardStatus() {
                     let commLabel = '';
                     if (rcid && byId[rcid]) {
                         const cm = byId[rcid];
-                        commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                        // 僅使用短名/名稱，避免顯示社區編號或ID
+                        commLabel = (cm.shortName || cm.name || '').trim();
                     } else if (rcode) {
                         const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
-                        commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                        // 僅在能映射到社區時使用；避免顯示社區編號
+                        commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : '';
                     } else if (embeddedName) {
                         commLabel = embeddedName;
                     }
@@ -444,7 +462,8 @@ function updateDashboardStatus() {
                 const statusText = getStatusDisplayText(u.clockInStatus, u.outboundLocation || null, u.dutyType || null);
                 try {
                     const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-                    const label = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                    // 僅使用短名/名稱作為顯示，避免顯示社區編號或ID
+                    const label = comm && ((comm.shortName || comm.name) || '') || '';
                     if (label) {
                         if (statusText.includes('上班')) state.clockInStatus = '上班';
                         else if (statusText.includes('下班') || statusText.includes('已下班')) state.clockInStatus = '下班';
@@ -458,7 +477,8 @@ function updateDashboardStatus() {
                         <span class="font-semibold text-lg ${statusColor}">${(function(){
                             try {
                                 const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-                                const label = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                                // 僅使用短名/名稱作為顯示，避免顯示社區編號或ID
+                                const label = comm && ((comm.shortName || comm.name) || '') || '';
                                 if (label) {
                                     if (statusText.includes('上班')) return `已在 ${label} 上班`;
                                     if (statusText.includes('下班') || statusText.includes('已下班')) return `已在 ${label} 下班`;

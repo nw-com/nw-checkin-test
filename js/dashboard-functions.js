@@ -36,7 +36,8 @@ function calculateWorkingTime(status, clockInTime) {
 function getStatusDisplayText(status, location, dutyType) {
     // 取社區顯示名稱：優先短名，其次正式名稱，最後代碼/ID
     const comm = (typeof window !== 'undefined' && window.state) ? window.state.currentCommunity : null;
-    const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+    // 僅使用短名/名稱作為顯示，避免顯示社區編號
+    const commLabel = comm && ((comm.shortName || comm.name) || '') || '';
     switch(status) {
         case '上班': return commLabel ? `已在 ${commLabel} 上班` : '上班';
         case '下班': return commLabel ? `已在 ${commLabel} 下班` : '下班';
