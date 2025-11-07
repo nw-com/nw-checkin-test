@@ -67,13 +67,16 @@ if (typeof state.autoSettingsErrorPromptShown === 'undefined') {
 
 // 根據狀態更新顯示文本和樣式
 function updateStatusTextAndStyle(statusText, statusDisplay) {
+    // 取社區顯示名稱：優先短名，其次正式名稱，最後代碼/ID
+    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+    const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
     switch(state.clockInStatus) {
         case '上班':
-            statusText.textContent = '上班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '下班':
-            statusText.textContent = '下班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 下班` : '下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-red-100 text-red-800';
             break;
         case '已下班-未打卡':
@@ -97,7 +100,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '臨時請假':
-            statusText.textContent = '請假';
+            statusText.textContent = commLabel ? `已於 ${commLabel} 請假` : '請假';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-orange-100 text-orange-800';
             break;
         case '特殊勤務':
