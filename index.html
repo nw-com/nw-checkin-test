@@ -12832,13 +12832,15 @@ function renderTrackingLeave(container) {
                             statusText = '請假申請';
                         }
 
-                        // 追蹤列表的狀態行僅顯示：上班 / 下班 / 請假
+                        // 追蹤列表的狀態行顯示為文字敘述：已在/已於 社區名稱 ...
+                        const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                        const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
                         const simplifyStatusForTracking = (s) => {
                             if (typeof s !== 'string') return '未打卡';
                             const t = s.trim();
-                            if (t.includes('請假')) return '請假';
-                            if (t.includes('下班') || t.includes('已下班')) return '下班';
-                            if (t.includes('上班') || t.includes('外出') || t.includes('抵達') || t.includes('離開') || t.includes('返回') || t.includes('出勤') || t.includes('特殊勤務')) return '上班';
+                            if (t.includes('請假')) return commLabel ? `已於 ${commLabel} 請假` : '請假';
+                            if (t.includes('下班') || t.includes('已下班')) return commLabel ? `已在 ${commLabel} 下班` : '下班';
+                            if (t.includes('上班') || t.includes('外出') || t.includes('抵達') || t.includes('離開') || t.includes('返回') || t.includes('出勤') || t.includes('特殊勤務')) return commLabel ? `已在 ${commLabel} 上班` : '上班';
                             return '未打卡';
                         };
                         statusText = simplifyStatusForTracking(statusText);
