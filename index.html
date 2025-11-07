@@ -12993,9 +12993,25 @@ function renderTrackingLeave(container) {
                             statusText = '請假申請';
                         }
 
-                        // 追蹤列表的狀態行顯示為文字敘述：已在/已於 社區名稱 ...
-                        const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-                        const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                        // 追蹤列表的狀態行顯示為文字敘述：以最新紀錄所屬社區覆蓋「已在/已於 社區名稱 ...」
+                        // 優先使用紀錄的 communityId/communityCode 映射至社區短名/名稱；若無則回退目前社區
+                        let commLabel = '';
+                        try {
+                            const byId = state.communitiesById || {};
+                            const recCommId = (latestRecord?.communityId || '').trim();
+                            const recCommCode = (latestRecord?.communityCode || latestRecord?.community?.code || '').trim();
+                            if (recCommId && byId[recCommId]) {
+                                const cm = byId[recCommId];
+                                commLabel = (cm.shortName || cm.name || '').trim() || recCommCode || recCommId;
+                            } else if (recCommCode) {
+                                const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === recCommCode);
+                                commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : recCommCode;
+                            }
+                        } catch (_) {}
+                        if (!commLabel) {
+                            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                            commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                        }
                         const simplifyStatusForTracking = (s) => {
                             if (typeof s !== 'string') return '未打卡';
                             const t = s.trim();
