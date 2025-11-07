@@ -152,6 +152,9 @@ function updateStatusDisplay() {
         clockInContainer.insertBefore(statusDisplay, clockInButtons);
     }
     
+    // 確保社區快取已載入，避免標籤為空
+    try { if (typeof ensureCommunitiesCache === 'function') { await ensureCommunitiesCache(); } } catch (_) {}
+
     // 更新儀表板狀態
     updateDashboardStatus();
     
@@ -276,6 +279,8 @@ function updateDashboardStatus() {
     if (!dashboardStatusElement) return;
 
     (async () => {
+        // 確保社區快取已載入，讓狀態文字能插入社區名稱
+        try { if (typeof ensureCommunitiesCache === 'function') { await ensureCommunitiesCache(); } } catch (_) {}
         const { collection, query, where, orderBy, limit, getDocs, doc, getDoc } = window.__fs;
         const userId = window.__auth?.currentUser?.uid || state.currentUser?.uid;
         if (!userId) {
@@ -387,12 +392,16 @@ function updateDashboardStatus() {
             });
             if (myDoc) {
                 const r = myDoc.data();
+                try { window.state.__latestRecord = r; } catch (_) {}
                 let statusText = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
                 // 以紀錄的社區資訊覆蓋（優先短名）
                 try {
                     const byId = state.communitiesById || {};
                     const rcid = (r.communityId || '').trim();
                     const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                    // 若無法映射，使用紀錄內嵌社區名稱
+                    let embeddedName = '';
+                    try { embeddedName = (r.community && (r.community.shortName || r.community.name)) ? (r.community.shortName || r.community.name) : ''; } catch (_) {}
                     let commLabel = '';
                     if (rcid && byId[rcid]) {
                         const cm = byId[rcid];
@@ -400,6 +409,8 @@ function updateDashboardStatus() {
                     } else if (rcode) {
                         const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
                         commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                    } else if (embeddedName) {
+                        commLabel = embeddedName;
                     }
                     if (commLabel) {
                         if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
