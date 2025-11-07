@@ -4712,6 +4712,18 @@
                                 try {
                                     const myStatusEl = document.getElementById('my-status');
                                     if (!myStatusEl) return; // 若未渲染「我的狀態」，則略過更新
+                                    // 確保社區快取與目前社區顯示名稱就緒（短名或名稱），避免顯示為純「上班/下班」
+                                    try { if (typeof ensureCommunitiesCache === 'function') { await ensureCommunitiesCache(); } } catch (_) {}
+                                    try {
+                                        let tries = 0;
+                                        while (tries < 10) {
+                                            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                                            const ready = !!(comm && (comm.shortName || comm.name));
+                                            if (ready) break;
+                                            await new Promise(r => setTimeout(r, 100));
+                                            tries++;
+                                        }
+                                    } catch (_) {}
                                     const recordsRef = collection(db, 'clockInRecords');
                                     const q = query(recordsRef, where('userId', '==', state.currentUser.uid), orderBy('timestamp', 'desc'), limit(1));
                                     const snap = await getDocs(q);
