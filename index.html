@@ -4698,11 +4698,11 @@
                             // 在人員列表以目前社區覆蓋顯示文字
                             try {
                                 const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-                                const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                                const commLabel = comm && (comm.shortName || comm.name) || '';
                                 if (commLabel) {
-                                    if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
-                                    else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
-                                    else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                                    if (statusText.includes('上班')) statusText = `已 ${commLabel} 上班`;
+                                    else if (statusText.includes('下班')) statusText = `已 ${commLabel} 下班`;
+                                    else if (statusText.includes('請假')) statusText = `已 ${commLabel} 請假`;
                                 }
                             } catch(_) {}
                             const statusColor = getStatusColor(statusText);

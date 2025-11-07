@@ -92,15 +92,15 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
     }
     switch(state.clockInStatus) {
         case '上班':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '下班':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 下班` : '下班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 下班` : '下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-red-100 text-red-800';
             break;
         case '已下班-未打卡':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 下班` : '下班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 下班` : '下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
             break;
         case '外出':
@@ -120,7 +120,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '臨時請假':
-            statusText.textContent = commLabel ? `已於 ${commLabel} 請假` : '請假';
+            statusText.textContent = commLabel ? `已 ${commLabel} 請假` : '請假';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-orange-100 text-orange-800';
             break;
         case '特殊勤務':
@@ -372,9 +372,9 @@ function updateDashboardStatus() {
                         commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : '';
                     }
                     if (commLabel) {
-                        if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
-                        else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
-                        else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                        if (statusText.includes('上班')) statusText = `已 ${commLabel} 上班`;
+                        else if (statusText.includes('下班')) statusText = `已 ${commLabel} 下班`;
+                        else if (statusText.includes('請假')) statusText = `已 ${commLabel} 請假`;
                     }
                 } catch(_) {}
                 const statusColor = getStatusColor(statusText);
@@ -445,9 +445,9 @@ function updateDashboardStatus() {
                         commLabel = embeddedName;
                     }
                     if (commLabel) {
-                        if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
-                        else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
-                        else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                        if (statusText.includes('上班')) statusText = `已 ${commLabel} 上班`;
+                        else if (statusText.includes('下班')) statusText = `已 ${commLabel} 下班`;
+                        else if (statusText.includes('請假')) statusText = `已 ${commLabel} 請假`;
                     }
                 } catch(_) {}
                 const statusColor = getStatusColor(statusText);
@@ -494,9 +494,9 @@ function updateDashboardStatus() {
                                 // 僅使用短名/名稱作為顯示，避免顯示社區編號或ID
                                 const label = comm && ((comm.shortName || comm.name) || '') || '';
                                 if (label) {
-                                    if (statusText.includes('上班')) return `已在 ${label} 上班`;
-                                    if (statusText.includes('下班') || statusText.includes('已下班')) return `已在 ${label} 下班`;
-                                    if (statusText.includes('請假')) return `已於 ${label} 請假`;
+                                    if (statusText.includes('上班')) return `已 ${label} 上班`;
+                                    if (statusText.includes('下班') || statusText.includes('已下班')) return `已 ${label} 下班`;
+                                    if (statusText.includes('請假')) return `已 ${label} 請假`;
                                 }
                             } catch (_) {}
                             return statusText;
