@@ -131,7 +131,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
 }
 
 // 更新狀態顯示
-function updateStatusDisplay() {
+async function updateStatusDisplay() {
     // 檢查狀態顯示區域是否存在，如果不存在則創建
     let statusDisplay = document.getElementById('status-display');
     if (!statusDisplay) {
