@@ -17170,6 +17170,29 @@ const roleBorderClass = roleColorMap[titleKey] || null;
             }
 
             // 移除舊的 getStatusColor 函數，使用 dashboard-functions.js 中的版本
+
+            // 覆蓋全域的狀態文字生成：統一改為「已在/已於 社區名稱 ...」
+            // 說明：部分頁面直接使用 getStatusDisplayText，此處強制加上社區名稱；
+            // 優先短名，其次正式名，再退回代碼/ID；無社區則維持原文。
+            (function() {
+                const resolveCommunityLabel = () => {
+                    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                    return comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                };
+
+                const originalGetStatusDisplayText = (typeof getStatusDisplayText === 'function') ? getStatusDisplayText : null;
+                window.getStatusDisplayText = function(status, location, dutyType) {
+                    const commLabel = resolveCommunityLabel();
+                    const s = (status || '').trim();
+                    if (s === '上班') return commLabel ? `已在 ${commLabel} 上班` : '上班';
+                    if (s === '下班' || s === '自動下班') return commLabel ? `已在 ${commLabel} 下班` : '下班';
+                    if (s === '臨時請假' || s === '請假') return commLabel ? `已於 ${commLabel} 請假` : (s === '臨時請假' ? '請假申請' : '請假');
+                    // 其他狀態維持原有行為（外出/抵達/離開/返回/特殊勤務等）
+                    if (originalGetStatusDisplayText) return originalGetStatusDisplayText(status, location, dutyType);
+                    // 沒有原始函式時的保險行為
+                    return s || '尚未打卡';
+                };
+            })();
             
             // 渲染請假資訊（第二個版本，使用統一的判斷邏輯）
             function renderLeaveInfo(userData) {
