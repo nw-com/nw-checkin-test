@@ -67,9 +67,26 @@ if (typeof state.autoSettingsErrorPromptShown === 'undefined') {
 
 // 根據狀態更新顯示文本和樣式
 function updateStatusTextAndStyle(statusText, statusDisplay) {
-    // 取社區顯示名稱：優先短名，其次正式名稱，最後代碼/ID
-    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-    const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+    let commLabel = '';
+    try {
+        const rec = (window.state && window.state.__latestRecord) ? window.state.__latestRecord : null;
+        const byId = (window.state && window.state.communitiesById) ? window.state.communitiesById : {};
+        if (rec) {
+            const rcid = (rec.communityId || '').trim();
+            const rcode = (rec.communityCode || rec.community?.code || '').trim();
+            if (rcid && byId[rcid]) {
+                const cm = byId[rcid];
+                commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+            } else if (rcode) {
+                const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
+                commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+            }
+        }
+    } catch (_) {}
+    if (!commLabel) {
+        const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+        commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+    }
     switch(state.clockInStatus) {
         case '上班':
             statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
@@ -212,6 +229,7 @@ function updateStatusDisplay() {
                                 state.clockInStatus = r.type || 'none';
                                 state.outboundLocation = r.locationName || null;
                                 state.dutyType = r.dutyType || null;
+                                try { window.state.__latestRecord = r; } catch (_) {}
                                 updateStatusTextAndStyle(statusText, statusDisplay);
                                 shown = true;
                             }
@@ -413,11 +431,31 @@ function updateDashboardStatus() {
             if (userDoc.exists() && userDoc.data().clockInStatus) {
                 const u = userDoc.data();
                 const statusText = getStatusDisplayText(u.clockInStatus, u.outboundLocation || null, u.dutyType || null);
+                try {
+                    const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                    const label = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                    if (label) {
+                        if (statusText.includes('上班')) state.clockInStatus = '上班';
+                        else if (statusText.includes('下班') || statusText.includes('已下班')) state.clockInStatus = '下班';
+                        else if (statusText.includes('請假')) state.clockInStatus = '臨時請假';
+                    }
+                } catch (_) {}
                 const statusColor = getStatusColor(statusText);
                 const ts = u.lastUpdated && u.lastUpdated.toDate ? u.lastUpdated.toDate() : (u.lastUpdated ? new Date(u.lastUpdated) : null);
                 dashboardStatusElement.innerHTML = `
                     <div class="flex items-center justify-between">
-                        <span class="font-semibold text-lg ${statusColor}">${statusText}</span>
+                        <span class="font-semibold text-lg ${statusColor}">${(function(){
+                            try {
+                                const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                                const label = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                                if (label) {
+                                    if (statusText.includes('上班')) return `已在 ${label} 上班`;
+                                    if (statusText.includes('下班') || statusText.includes('已下班')) return `已在 ${label} 下班`;
+                                    if (statusText.includes('請假')) return `已於 ${label} 請假`;
+                                }
+                            } catch (_) {}
+                            return statusText;
+                        })()}</span>
                     </div>
                     <div class="text-sm text-gray-500 mt-1">
                         ${ts ? '狀態更新 ' + ts.toLocaleString('zh-TW', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false}) : ''}
