@@ -157,6 +157,20 @@ async function updateStatusDisplay() {
     
     // 確保社區快取已載入，避免標籤為空
     try { if (typeof ensureCommunitiesCache === 'function') { await ensureCommunitiesCache(); } } catch (_) {}
+    // 嘗試計算可用社區並更新頁首社區顯示，讓 currentCommunity 盡快就緒
+    try { if (typeof computeAvailableCommunities === 'function') { await computeAvailableCommunities(); } } catch (_) {}
+    try { if (typeof updateHeaderCommunity === 'function') { updateHeaderCommunity(); } } catch (_) {}
+    // 等待目前社區就緒（短名或名稱），最多約1秒
+    try {
+        let tries = 0;
+        while (tries < 10) {
+            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+            const ready = !!(comm && (comm.shortName || comm.name));
+            if (ready) break;
+            await new Promise(r => setTimeout(r, 100));
+            tries++;
+        }
+    } catch (_) {}
 
     // 更新儀表板狀態
     updateDashboardStatus();
