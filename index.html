@@ -4731,10 +4731,25 @@
                                     if (!snap.empty) {
                                         const r = snap.docs[0].data();
                                         let statusTextLast = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
-                                        // 以目前社區短名/名稱覆蓋，確保顯示「已 ［社區］ 上班/下班/請假」
+                                        // 以紀錄或目前社區覆蓋：優先紀錄內嵌短名/名稱，其次 communitiesById 映射，再次目前社區
                                         try {
-                                            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-                                            const commLabel = comm && (comm.shortName || comm.name) || '';
+                                            const byId = window.state?.communitiesById || {};
+                                            const rcid = (r.communityId || '').trim();
+                                            const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                                            let embedded = '';
+                                            try { embedded = (r.community && (r.community.shortName || r.community.name)) ? (r.community.shortName || r.community.name) : ''; } catch (_) {}
+                                            let commLabel = embedded;
+                                            if (!commLabel && rcid && byId[rcid]) {
+                                                const cm = byId[rcid];
+                                                commLabel = (cm.shortName || cm.name || '').trim();
+                                            } else if (!commLabel && rcode) {
+                                                const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
+                                                commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : '';
+                                            }
+                                            if (!commLabel) {
+                                                const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                                                commLabel = comm && (comm.shortName || comm.name) || '';
+                                            }
                                             if (commLabel) {
                                                 if (statusTextLast.includes('上班')) statusTextLast = `已 ${commLabel} 上班`;
                                                 else if (statusTextLast.includes('下班')) statusTextLast = `已 ${commLabel} 下班`;

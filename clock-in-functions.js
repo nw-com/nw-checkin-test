@@ -72,6 +72,12 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
         const rec = (window.state && window.state.__latestRecord) ? window.state.__latestRecord : null;
         const byId = (window.state && window.state.communitiesById) ? window.state.communitiesById : {};
         if (rec) {
+            // 先嘗試使用紀錄內嵌社區短名/名稱（若有）
+            try {
+                const embedded = rec.community || {};
+                const embeddedLabel = (embedded.shortName || embedded.name || '').trim();
+                if (embeddedLabel) commLabel = embeddedLabel;
+            } catch (_) {}
             const rcid = (rec.communityId || '').trim();
             const rcode = (rec.communityCode || rec.community?.code || '').trim();
             if (rcid && byId[rcid]) {
@@ -361,7 +367,10 @@ function updateDashboardStatus() {
                     const byId = state.communitiesById || {};
                     const rcid = (r.communityId || '').trim();
                     const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
-                    let commLabel = '';
+                    // 若無法映射，使用紀錄內嵌社區名稱
+                    let embeddedName = '';
+                    try { embeddedName = (r.community && (r.community.shortName || r.community.name)) ? (r.community.shortName || r.community.name) : ''; } catch (_) {}
+                    let commLabel = embeddedName;
                     if (rcid && byId[rcid]) {
                         const cm = byId[rcid];
                         // 僅使用短名/名稱，避免顯示社區編號或ID
