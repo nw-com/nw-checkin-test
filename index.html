@@ -5040,7 +5040,26 @@
                             return a.name.localeCompare(b.name, 'zh-Hant');
                         }).forEach(user => {
                             const latest = latestMap[user.id] || null;
-                            const statusText = latest ? getStatusDisplayText(latest.type || '未知', latest.locationName || null, latest.dutyType || null) : '未打卡';
+                            let statusText = latest ? getStatusDisplayText(latest.type || '未知', latest.locationName || null, latest.dutyType || null) : '未打卡';
+                            // 以紀錄的社區資訊覆蓋顯示（優先短名）
+                            try {
+                                const byId = state.communitiesById || {};
+                                const rcid = (latest?.communityId || '').trim();
+                                const rcode = (latest?.communityCode || latest?.dutyCommunityCode || '').trim();
+                                let commLabel = '';
+                                if (rcid && byId[rcid]) {
+                                    const cm = byId[rcid];
+                                    commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                                } else if (rcode) {
+                                    const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
+                                    commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                                }
+                                if (commLabel) {
+                                    if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                    else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                    else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                                }
+                            } catch (_) {}
                             const statusColor = getStatusColor(statusText);
                             const clockInTime = latest?.timestamp?.toDate?.() ? latest.timestamp.toDate() : (latest?.timestamp ? new Date(latest.timestamp) : null);
                             const timeFormatted = clockInTime ? clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false}) : 'N/A';
@@ -11191,8 +11210,27 @@ function renderGroupPatrolRecords(container) {
                         userElement.className = `flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${!hasLocation ? 'opacity-50' : ''}`;
                         const latest = latestMap[user.id] || null;
                         const locText = latest?.locationName || (user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation?.address);
-                        const statusText = latest ? getStatusDisplayText(latest.type || '未知', latest.locationName || null, latest.dutyType || null)
-                                                  : (getStatusDisplayText(user.clockInStatus || '未打卡', locText, user.dutyType) || '未打卡');
+                        let statusText = latest ? getStatusDisplayText(latest.type || '未知', latest.locationName || null, latest.dutyType || null)
+                                                : (getStatusDisplayText(user.clockInStatus || '未打卡', locText, user.dutyType) || '未打卡');
+                        // 以最新紀錄的社區資訊覆蓋顯示（優先短名）
+                        try {
+                            const byId = state.communitiesById || {};
+                            const rcid = (latest?.communityId || '').trim();
+                            const rcode = (latest?.communityCode || latest?.dutyCommunityCode || '').trim();
+                            let commLabel = '';
+                            if (rcid && byId[rcid]) {
+                                const cm = byId[rcid];
+                                commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                            } else if (rcode) {
+                                const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
+                                commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                            }
+                            if (commLabel) {
+                                if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                            }
+                        } catch (_) {}
                         const latestTime = latest ? (latest.timestamp?.toDate?.() || (latest.timestamp ? new Date(latest.timestamp) : null))
                                                   : (user.lastClockInTime?.toDate?.() || null);
                         userElement.innerHTML = `
@@ -11419,13 +11457,23 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                             commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
                         }
                         const commBadge = commLabel ? `<span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200 inline-flex items-center"><i data-lucide="building-2" class="w-3 h-3 mr-1"></i>社區：${commLabel}</span>` : '';
+                        // 狀態文字覆蓋社區名稱
+                        let statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                        try {
+                            if (commLabel) {
+                                if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                            }
+                        } catch (_) {}
+                        const statusBgClass = getStatusBgColor(statusText);
                         card.innerHTML = `
                             <div class="flex justify-between items-start">
                                 <div>
                                     <div class="font-semibold">${userName}</div>
                                     <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW', { hour12: false })}</div>
                                     <div class="mt-1 flex items-center">
-<span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null))}">${getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null)}</span>
+<span class="px-2 py-0.5 rounded text-sm ${statusBgClass}">${statusText}</span>
                         ${record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
                                     </div>
                                     <div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId || '未知'}</div>
@@ -12516,7 +12564,7 @@ function renderTrackingLeave(container) {
                 });
                 
                 // 加載請假記錄
-                function loadLeaveRecords() {
+                async function loadLeaveRecords() {
                     const recordsList = document.getElementById('leave-records-list');
                     const noRecordsMsg = document.getElementById('no-leave-records');
                     
@@ -12558,17 +12606,72 @@ function renderTrackingLeave(container) {
                         leavesQuery = query(leavesQuery, where('status', '==', status));
                     }
 
-                    // 按創建時間排序
-                    leavesQuery = query(leavesQuery, orderBy('createdAt', 'desc'));
+                    // 按創建時間排序（若無索引失敗，後備改用前端排序）
+                    try {
+                        leavesQuery = query(leavesQuery, orderBy('createdAt', 'desc'));
+                    } catch (_) {
+                        // 有些情況（環境或版本差異）可能在構建查詢時就報錯，保留不排序查詢
+                    }
 
-                    // 執行查詢
-                    getDocs(leavesQuery).then((querySnapshot) => {
+                    // 執行查詢，若因索引缺失失敗則後備為僅 where 條件、不排序，再不行則抓取全部前端過濾
+                    let querySnapshot;
+                    try {
+                        querySnapshot = await getDocs(leavesQuery);
+                    } catch (error) {
+                        console.warn('獲取請假記錄失敗（可能缺少索引），使用後備查詢：', error);
+                        try {
+                            // 後備：僅套用 where 條件，不使用 orderBy
+                            let fallback = collection(db, 'leaves');
+                            const comm = state.currentCommunity || null;
+                            const f = [];
+                            if (comm && (comm.id || comm.code || comm.communityCode)) {
+                                if (comm.id) {
+                                    f.push(where('communityId','==', comm.id));
+                                } else {
+                                    const ccode = (comm.code || comm.communityCode);
+                                    f.push(where('communityCode','==', ccode));
+                                }
+                            }
+                            if (status !== 'all') {
+                                f.push(where('status','==', status));
+                            }
+                            querySnapshot = await getDocs(query(fallback, ...f));
+                            try { showToast('已使用後備查詢；請於 Firestore 建立複合索引', false); } catch(_) {}
+                        } catch (error2) {
+                            console.error('後備查詢也失敗，改用最終回退（全部抓取前端過濾）', error2);
+                            try {
+                                querySnapshot = await getDocs(collection(db, 'leaves'));
+                                try { showToast('已使用最終回退查詢；請建立索引以提升效能', false); } catch(_) {}
+                            } catch (error3) {
+                                console.error('最終回退也失敗：', error3);
+                                recordsList.innerHTML = `
+                                    <tr>
+                                        <td colspan="6" class="px-6 py-4 text-center text-red-500">
+                                            讀取記錄失敗，請稍後再試
+                                        </td>
+                                    </tr>
+                                `;
+                                return;
+                            }
+                        }
+                    }
+
+                    // 成功取得資料後處理
+                    {
                         if (querySnapshot.empty) {
                             recordsList.innerHTML = '';
                             noRecordsMsg.classList.remove('hidden');
                             return;
                         }
-                        
+                        // 依 createdAt 前端排序（處理無法使用 orderBy 的情況）
+                        const sortedDocs = querySnapshot.docs.slice().sort((a,b) => {
+                            const ad = a.data() || {};
+                            const bd = b.data() || {};
+                            const at = ad.createdAt?.toDate?.() ? ad.createdAt.toDate() : (ad.createdAt ? new Date(ad.createdAt) : (ad.startTime?.toDate?.() ? ad.startTime.toDate() : (ad.startTime ? new Date(ad.startTime) : new Date(0))));
+                            const bt = bd.createdAt?.toDate?.() ? bd.createdAt.toDate() : (bd.createdAt ? new Date(bd.createdAt) : (bd.startTime?.toDate?.() ? bd.startTime.toDate() : (bd.startTime ? new Date(bd.startTime) : new Date(0))));
+                            return bt - at;
+                        });
+
                         noRecordsMsg.classList.add('hidden');
                         recordsList.innerHTML = '';
                         
@@ -12583,7 +12686,7 @@ function renderTrackingLeave(container) {
                         
                         let hasRecords = false;
                         
-                        querySnapshot.forEach((docSnap) => {
+                        sortedDocs.forEach((docSnap) => {
                             const leave = docSnap.data();
                             const leaveId = docSnap.id;
                             const isDeleted = !!leave.deleted;
@@ -12605,9 +12708,12 @@ function renderTrackingLeave(container) {
                             
                             // 如果選擇了日期，檢查請假時間是否在所選日期範圍內
                             if (selectedDate && nextDay) {
-                                const startTime = leave.startTime.toDate();
-                                const endTime = leave.endTime.toDate();
-                                
+                                const startRaw = leave.startTime;
+                                const endRaw = leave.endTime;
+                                const startTime = startRaw?.toDate?.() ? startRaw.toDate() : (startRaw ? new Date(startRaw) : null);
+                                const endTime = endRaw?.toDate?.() ? endRaw.toDate() : (endRaw ? new Date(endRaw) : null);
+                                // 缺少時間欄位則視為不符合日期條件
+                                if (!startTime || !endTime) return;
                                 // 檢查請假時間是否與所選日期有重疊
                                 if (!(startTime < nextDay && endTime > selectedDate)) {
                                     return; // 跳過不符合日期條件的記錄
@@ -12616,8 +12722,12 @@ function renderTrackingLeave(container) {
                             
                             hasRecords = true;
                             
-                            const startTime = leave.startTime.toDate().toLocaleString('zh-TW', { hour12: false });
-                            const endTime = leave.endTime.toDate().toLocaleString('zh-TW', { hour12: false });
+                            const sRaw = leave.startTime;
+                            const eRaw = leave.endTime;
+                            const sDt = sRaw?.toDate?.() ? sRaw.toDate() : (sRaw ? new Date(sRaw) : null);
+                            const eDt = eRaw?.toDate?.() ? eRaw.toDate() : (eRaw ? new Date(eRaw) : null);
+                            const startTime = sDt ? sDt.toLocaleString('zh-TW', { hour12: false }) : 'N/A';
+                            const endTime = eDt ? eDt.toLocaleString('zh-TW', { hour12: false }) : 'N/A';
                             
                             let statusBadge = '';
                             switch (leave.status) {
@@ -12752,16 +12862,7 @@ function renderTrackingLeave(container) {
                                 }
                             });
                         });
-                    }).catch(error => {
-                        console.error('獲取請假記錄失敗:', error);
-                        recordsList.innerHTML = `
-                            <tr>
-                                <td colspan="6" class="px-6 py-4 text-center text-red-500">
-                                    讀取記錄失敗，請稍後再試
-                                </td>
-                            </tr>
-                        `;
-                    });
+                    }
                 }
             }
             
