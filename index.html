@@ -4730,7 +4730,17 @@
                                     let innerHTML = '';
                                     if (!snap.empty) {
                                         const r = snap.docs[0].data();
-                                        const statusTextLast = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                                        let statusTextLast = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                                        // 以目前社區短名/名稱覆蓋，確保顯示「已 ［社區］ 上班/下班/請假」
+                                        try {
+                                            const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                                            const commLabel = comm && (comm.shortName || comm.name) || '';
+                                            if (commLabel) {
+                                                if (statusTextLast.includes('上班')) statusTextLast = `已 ${commLabel} 上班`;
+                                                else if (statusTextLast.includes('下班')) statusTextLast = `已 ${commLabel} 下班`;
+                                                else if (statusTextLast.includes('請假')) statusTextLast = `已 ${commLabel} 請假`;
+                                            }
+                                        } catch (_) {}
                                         const statusColorLast = getStatusColor(statusTextLast);
                                         const ts = r.timestamp && r.timestamp.toDate ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
                                         innerHTML = `
@@ -17360,22 +17370,22 @@ const roleBorderClass = roleColorMap[titleKey] || null;
 
             // 移除舊的 getStatusColor 函數，使用 dashboard-functions.js 中的版本
 
-            // 覆蓋全域的狀態文字生成：統一改為「已在/已於 社區名稱 ...」
+            // 覆蓋全域的狀態文字生成：統一改為「已 ［社區］ ...」
             // 說明：部分頁面直接使用 getStatusDisplayText，此處強制加上社區名稱；
-            // 優先短名，其次正式名，再退回代碼/ID；無社區則維持原文。
+            // 僅使用短名或正式名稱；無社區則維持原文。
             (function() {
                 const resolveCommunityLabel = () => {
                     const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
-                    return comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                    return comm && (comm.shortName || comm.name) || '';
                 };
 
                 const originalGetStatusDisplayText = (typeof getStatusDisplayText === 'function') ? getStatusDisplayText : null;
                 window.getStatusDisplayText = function(status, location, dutyType) {
                     const commLabel = resolveCommunityLabel();
                     const s = (status || '').trim();
-                    if (s === '上班') return commLabel ? `已在 ${commLabel} 上班` : '上班';
-                    if (s === '下班' || s === '自動下班') return commLabel ? `已在 ${commLabel} 下班` : '下班';
-                    if (s === '臨時請假' || s === '請假') return commLabel ? `已於 ${commLabel} 請假` : (s === '臨時請假' ? '請假申請' : '請假');
+                    if (s === '上班') return commLabel ? `已 ${commLabel} 上班` : '上班';
+                    if (s === '下班' || s === '自動下班') return commLabel ? `已 ${commLabel} 下班` : '下班';
+                    if (s === '臨時請假' || s === '請假') return commLabel ? `已 ${commLabel} 請假` : (s === '臨時請假' ? '請假申請' : '請假');
                     // 其他狀態維持原有行為（外出/抵達/離開/返回/特殊勤務等）
                     if (originalGetStatusDisplayText) return originalGetStatusDisplayText(status, location, dutyType);
                     // 沒有原始函式時的保險行為

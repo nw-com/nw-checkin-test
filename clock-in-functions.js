@@ -104,19 +104,19 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
             break;
         case '外出':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-emerald-100 text-emerald-800';
             break;
         case '抵達':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '離開':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '返回':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '臨時請假':
@@ -124,7 +124,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-orange-100 text-orange-800';
             break;
         case '特殊勤務':
-            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
+            statusText.textContent = commLabel ? `已 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
             break;
         default:
