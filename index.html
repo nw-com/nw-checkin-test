@@ -1807,7 +1807,26 @@
                                 const rowClass = hasAnomalies ? 'bg-red-50' : '';
                                 const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : new Date());
                                 const locName = typeof r.locationName === 'string' ? r.locationName : (r.location?.address || null);
-                                const statusText = getStatusDisplayText(r.type || '未知', locName, r.dutyType || null);
+                                let statusText = getStatusDisplayText(r.type || '未知', locName, r.dutyType || null);
+                                // 以紀錄社區覆蓋顯示文字（上班/下班/請假）
+                                try {
+                                    const byId = window.state?.communitiesById || {};
+                                    const rcid = (r.communityId || '').trim();
+                                    const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                                    let commLabel = '';
+                                    if (rcid && byId[rcid]) {
+                                        const cm = byId[rcid];
+                                        commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                                    } else if (rcode) {
+                                        const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
+                                        commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                                    }
+                                    if (commLabel) {
+                                        if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                        else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                        else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                                    }
+                                } catch(_) {}
                                 const statusColorClass = getStatusColor(statusText);
                                 html += `
                                     <tr class="${rowClass}">
@@ -4675,7 +4694,17 @@
                         return a.name.localeCompare(b.name, 'zh-Hant');
                     }).forEach(user => {
                             const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : (user.lastLocation?.address || null);
-                            const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
+                            let statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
+                            // 在人員列表以目前社區覆蓋顯示文字
+                            try {
+                                const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                                const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                                if (commLabel) {
+                                    if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                    else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                    else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                                }
+                            } catch(_) {}
                             const statusColor = getStatusColor(statusText);
                         if (user.id === state.currentUser.uid) {
                             myStatusFound = true;
@@ -6700,7 +6729,17 @@
                                         const u = userSnap.data();
                                         const ts = u.lastUpdated?.toDate?.() || (u.lastUpdated ? new Date(u.lastUpdated) : null);
                                         if (u.clockInStatus && ts && ts >= startOfMonth && ts <= endOfMonth) {
-                                            const statusText = getStatusDisplayText(u.clockInStatus, u.outboundLocation || null, u.dutyType || null);
+                                            let statusText = getStatusDisplayText(u.clockInStatus, u.outboundLocation || null, u.dutyType || null);
+                                            // 覆蓋顯示文本加入社區名稱（優先目前社區）
+                                            try {
+                                                const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                                                const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                                                if (commLabel) {
+                                                    if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                                    else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                                    else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                                                }
+                                            } catch(_) {}
                                             const statusColor = getStatusColor(statusText);
                                             recordsListEl.innerHTML = `
                                                 <div class="bg-white p-3 rounded-lg shadow-sm border mb-3">
@@ -6767,7 +6806,7 @@
                         filtered.forEach(record => {
                             const card = document.createElement('div');
                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
-                            const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                            let statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
                             const statusColor = getStatusColor(statusText);
                             const abnormalInfo = computeRecordAbnormal(record, state.currentUserData?.serviceCommunities || []);
                             const abnormalHtml = (abnormalInfo && abnormalInfo.isAbnormal)
@@ -6787,10 +6826,16 @@
                                 commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
                             }
                             const commBadge = commLabel ? `<span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200 inline-flex items-center"><i data-lucide="building-2" class="w-3 h-3 mr-1"></i>社區：${commLabel}</span>` : '';
+                            if (commLabel) {
+                                if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                            }
+                            const finalStatusColor = getStatusColor(statusText);
                             card.innerHTML = `
                                 <div class="flex justify-between items-start">
                                     <div>
-                                        <p class="font-bold text-lg ${statusColor}">${statusText}</p>
+                                        <p class="font-bold text-lg ${finalStatusColor}">${statusText}</p>
                                         <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
                                         ${abnormalHtml}
                                     </div>
@@ -6971,7 +7016,16 @@
                                         filtered.forEach(record => {
                                             const card = document.createElement('div');
                                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
-                                            const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                                            let statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                                            try {
+                                                const comm = (window.state && window.state.currentCommunity) ? window.state.currentCommunity : null;
+                                                const commLabel = comm && (comm.shortName || comm.name || comm.code || comm.communityCode || comm.id) || '';
+                                                if (commLabel) {
+                                                    if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                                    else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                                    else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                                                }
+                                            } catch(_) {}
                                             const statusColor = getStatusColor(statusText);
                                             const abnormalInfo = computeRecordAbnormal(record, state.currentUserData?.serviceCommunities || []);
                                             const abnormalHtml = (abnormalInfo && abnormalInfo.isAbnormal)
@@ -11780,8 +11834,8 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                                 return timeB - timeA;
                             }).forEach(record => {
                                 const userName = usersMap[record.userId] || '未知用戶';
-                                const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
-                                const statusColor = getStatusColor(statusText);
+                                let statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                                let statusColor = getStatusColor(statusText);
                                 const abnormalInfo = computeRecordAbnormal(record, (users.find(u => u.id === record.userId)?.serviceCommunities) || []);
                                 const abnormalHtml = (abnormalInfo && abnormalInfo.isAbnormal)
                                     ? `<div class="mt-1 flex items-center"><span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700 border border-red-200">打卡位置異常</span>${abnormalInfo.detail ? `<span class=\"ml-2 text-xs text-gray-500\">${abnormalInfo.detail}</span>` : ''}</div>`
@@ -11802,7 +11856,13 @@ const roleBorderClass = roleColorMap[titleKey] || 'border-white';
                                     const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
                                     commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
                                 }
-                                const commBadge = commLabel ? `<span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200 inline-flex items-center"><i data-lucide=\"building-2\" class=\"w-3 h-3 mr-1\"></i>社區：${commLabel}</span>` : '';
+                                const commBadge = commLabel ? `<span class=\"px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200 inline-flex items-center\"><i data-lucide=\"building-2\" class=\"w-3 h-3 mr-1\"></i>社區：${commLabel}</span>` : '';
+                                if (commLabel) {
+                                    if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                                    else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                                    else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                                    statusColor = getStatusColor(statusText);
+                                }
                                 card.innerHTML = `
                                     <div class="flex justify-between items-start">
                                         <div>

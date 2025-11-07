@@ -80,23 +80,23 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-red-100 text-red-800';
             break;
         case '已下班-未打卡':
-            statusText.textContent = '下班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 下班` : '下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
             break;
         case '外出':
-            statusText.textContent = '上班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-emerald-100 text-emerald-800';
             break;
         case '抵達':
-            statusText.textContent = '上班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '離開':
-            statusText.textContent = '上班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '返回':
-            statusText.textContent = '上班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '臨時請假':
@@ -104,7 +104,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-orange-100 text-orange-800';
             break;
         case '特殊勤務':
-            statusText.textContent = '上班';
+            statusText.textContent = commLabel ? `已在 ${commLabel} 上班` : '上班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
             break;
         default:
@@ -304,7 +304,26 @@ function updateDashboardStatus() {
             const snap = await getDocs(q);
             if (!snap.empty) {
                 const r = snap.docs[0].data();
-                const statusText = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                let statusText = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                // 以紀錄的社區資訊覆蓋（優先短名）
+                try {
+                    const byId = state.communitiesById || {};
+                    const rcid = (r.communityId || '').trim();
+                    const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                    let commLabel = '';
+                    if (rcid && byId[rcid]) {
+                        const cm = byId[rcid];
+                        commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                    } else if (rcode) {
+                        const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
+                        commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                    }
+                    if (commLabel) {
+                        if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                        else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                        else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                    }
+                } catch(_) {}
                 const statusColor = getStatusColor(statusText);
                 const ts = r.timestamp && r.timestamp.toDate ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
                 dashboardStatusElement.innerHTML = `
@@ -350,7 +369,26 @@ function updateDashboardStatus() {
             });
             if (myDoc) {
                 const r = myDoc.data();
-                const statusText = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                let statusText = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                // 以紀錄的社區資訊覆蓋（優先短名）
+                try {
+                    const byId = state.communitiesById || {};
+                    const rcid = (r.communityId || '').trim();
+                    const rcode = (r.communityCode || r.dutyCommunityCode || '').trim();
+                    let commLabel = '';
+                    if (rcid && byId[rcid]) {
+                        const cm = byId[rcid];
+                        commLabel = (cm.shortName || cm.name || '').trim() || rcode || rcid;
+                    } else if (rcode) {
+                        const cm = Object.values(byId).find(c => (String(c.code || '').trim()) === rcode);
+                        commLabel = cm ? ((cm.shortName || cm.name || '').trim()) : rcode;
+                    }
+                    if (commLabel) {
+                        if (statusText.includes('上班')) statusText = `已在 ${commLabel} 上班`;
+                        else if (statusText.includes('下班')) statusText = `已在 ${commLabel} 下班`;
+                        else if (statusText.includes('請假')) statusText = `已於 ${commLabel} 請假`;
+                    }
+                } catch(_) {}
                 const statusColor = getStatusColor(statusText);
                 const ts = r.timestamp && r.timestamp.toDate ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
                 dashboardStatusElement.innerHTML = `
