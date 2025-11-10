@@ -2207,7 +2207,10 @@
                                     const [line1, line2] = toTwoLines(c.shortName || c.name || c.code || '');
                                     const title = (c.name || '').replace(/"/g,'&quot;');
                                     return `
-                                    <button class="enter-community w-full px-3 py-2 rounded-md border bg-white hover:bg-red-50 text-gray-800 font-medium text-sm flex flex-col items-center justify-center text-center" style="aspect-ratio: 1 / 1;" data-id="${c.id}" title="${title}">
+                                    <button class="enter-community relative w-full px-3 py-2 rounded-md border bg-white hover:bg-red-50 text-gray-800 font-medium text-sm flex flex-col items-center justify-center text-center" style="aspect-ratio: 1 / 1;" data-id="${c.id}" title="${title}">
+                                        <!-- 狀態圓點：異常（右上紅）、請假（左上橘） -->
+                                        <span class="comm-dot-red hidden absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500" aria-hidden="true"></span>
+                                        <span class="comm-dot-orange hidden absolute top-1 left-1 w-2.5 h-2.5 rounded-full bg-orange-500" aria-hidden="true"></span>
                                         <span class="block leading-tight text-center" style="font-size:13px;">${line1 || '&nbsp;'}</span>
                                         <span class="block leading-tight text-center" style="font-size:13px;">${line2 || '&nbsp;'}</span>
                                     </button>`;
@@ -2388,15 +2391,28 @@
                                 });
                             } catch (_) {}
 
-                            // 一次性套用樣式（紅>橙>黃）
+                            // 一次性套用樣式與圓點（紅>橙>黃）；紅點：異常與重複/異地打卡；橘點：請假
                             for (const c of currentList) {
                                 const btn = container.querySelector(`.enter-community[data-id="${c.id}"]`);
                                 if (!btn) continue;
                                 const r = results[c.id] || {};
                                 const add = (cls) => cls.forEach(cn => btn.classList.add(cn));
                                 const remove = (cls) => cls.forEach(cn => btn.classList.remove(cn));
-                                if (hasActiveAnomaliesByCommunity[c.id] || r.hasPendingLeave || r.hasDoublePunch || r.hasAbnormalLocation) {
+                                const hasAnomaly = !!(hasActiveAnomaliesByCommunity[c.id] || r.hasDoublePunch || r.hasAbnormalLocation);
+                                const hasLeave = !!r.hasPendingLeave;
+                                const redDot = btn.querySelector('.comm-dot-red');
+                                const orangeDot = btn.querySelector('.comm-dot-orange');
+                                if (hasAnomaly) {
+                                    redDot && redDot.classList.remove('hidden');
+                                    // 重大異常仍加淡紅底以醒目
                                     remove(['bg-white','hover:bg-red-50']); add(['bg-red-50','border-red-300','text-red-800']);
+                                } else {
+                                    redDot && redDot.classList.add('hidden');
+                                }
+                                if (hasLeave) {
+                                    orangeDot && orangeDot.classList.remove('hidden');
+                                } else {
+                                    orangeDot && orangeDot.classList.add('hidden');
                                 }
                             }
                         } catch (e) {
@@ -2404,13 +2420,12 @@
                         }
                     })();
 
-                    // 依社區顯示帳號申請待核准提示（淺紫色底，僅管理角色可見），並在無待核准時移除既有紫色標示；
-                    // 若同名已有「已核准」則忽略其 pending（避免造成殘留紫色）
+                    // 依社區顯示：
+                    // 1) 帳號申請待核准（淺紫色底）
+                    // 2) 近期新增人員（淺紫色底，含指定人員角色）
+                    // 並在無待核准/新增時移除既有紫色標示；若同名已有「已核准」則忽略其 pending（避免殘留紫色）
                     (async () => {
                         try {
-                            const role = state.currentUserData?.role || '';
-                            const canSeePending = ['admin','hr','manager','junior_manager'].includes(role);
-                            if (!canSeePending) return;
                             const fs = window.__fs || {}; const db = window.__db;
                             const { collection, getDocs, query, where } = fs;
                             if (!db || !collection || !getDocs || !query || !where) return;
@@ -2441,6 +2456,55 @@
                                 const cid = communitiesByCode[code];
                                 if (cid) pendingCommIds.add(cid);
                             });
+
+                            // 近幾日新增人員（以 users.createdAt 判斷），限定指定人員角色
+                            const newAddedCommIds = new Set();
+                            try {
+                                const usnap = await getDocs(collection(db, 'users'));
+                                const allowedRoles = new Set(['總幹事','秘書','保全','清潔','機電']);
+                                const now = new Date();
+                                const days = 3; // 門檻：近 3 日
+                                const threshold = new Date(now.getTime() - days*24*60*60*1000);
+                                const resolveRole = (u) => {
+                                    const tags = [u.role, u.jobTitle, u.applicationTitle].map(x => ((x||'') + '').trim());
+                                    for (const t of tags) {
+                                        if (!t) continue;
+                                        if (allowedRoles.has(t)) return t;
+                                        if (t.includes('保全')) return '保全';
+                                        if (t.includes('清潔')) return '清潔';
+                                        if (t.includes('機電')) return '機電';
+                                        if (t.includes('總幹事')) return '總幹事';
+                                        if (t.includes('秘書')) return '秘書';
+                                    }
+                                    return null;
+                                };
+                                usnap.forEach(d => {
+                                    const u = d.data() || {};
+                                    // 僅當使用者屬於指定人員角色且近期建立才標示
+                                    const roleName = resolveRole(u);
+                                    if (!roleName) return;
+                                    const createdAt = u.createdAt?.toDate ? u.createdAt.toDate() : (u.createdAt ? new Date(u.createdAt) : null);
+                                    if (!createdAt || createdAt < threshold) return;
+                                    const ids = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
+                                    const code = (u.serviceCommunityCode || '').trim();
+                                    const mapped = code ? communitiesByCode[code] : null;
+                                    const memSet = new Set();
+                                    ids.forEach(cid => { if (communitiesByCode && cid) memSet.add(cid); });
+                                    if (mapped) memSet.add(mapped);
+                                    memSet.forEach(cid => { if (cid) newAddedCommIds.add(cid); });
+                                });
+                            } catch (_) {}
+
+                            // 待核准 or 近期新增 → 套用紫色標示，若已被異常標紅則不覆蓋
+                            const purpleSet = new Set([...pendingCommIds, ...newAddedCommIds]);
+                            purpleSet.forEach(cid => {
+                                const btn = container.querySelector(`.enter-community[data-id="${cid}"]`);
+                                if (!btn) return;
+                                const isRed = btn.classList.contains('bg-red-50');
+                                if (isRed) return;
+                                btn.classList.remove('bg-white','hover:bg-red-50');
+                                btn.classList.add('bg-purple-100','border-violet-200','text-violet-800');
+                            });
                             // 套用紫色標示，若已被異常標紅則不覆蓋
                             pendingCommIds.forEach(cid => {
                                 const btn = container.querySelector(`.enter-community[data-id="${cid}"]`);
@@ -2451,10 +2515,10 @@
                                 btn.classList.add('bg-purple-100','border-violet-200','text-violet-800');
                             });
 
-                            // 移除非待核准社區上既有的紫色標示（避免殘留）
+                            // 移除不在紫色集合中的按鈕既有的紫色標示（避免殘留）
                             container.querySelectorAll('.enter-community').forEach(btn => {
                                 const cid = btn.getAttribute('data-id');
-                                if (!pendingCommIds.has(cid) && btn.classList.contains('bg-purple-100')) {
+                                if (!purpleSet.has(cid) && btn.classList.contains('bg-purple-100')) {
                                     btn.classList.remove('bg-purple-100','border-violet-200','text-violet-800');
                                     const hasAlert = btn.classList.contains('bg-red-50') || btn.classList.contains('bg-orange-50') || btn.classList.contains('bg-yellow-50') || btn.classList.contains('bg-gray-100');
                                     if (!hasAlert) {
