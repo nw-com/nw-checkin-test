@@ -3750,7 +3750,15 @@
 
                     const byUser = {};
                     users.forEach(u => { byUser[u.id] = []; });
-                    records.forEach(r => { if (byUser[r.userId]) byUser[r.userId].push(r); });
+                    // 嚴格依當前社區過濾打卡紀錄，避免跨社區紀錄影響本社區異常
+                    records.forEach(r => {
+                        const uid = r.userId;
+                        if (!byUser[uid]) return;
+                        const comm = state.currentCommunity || null;
+                        if (!comm || recordMatchesCommunityStrict(r, comm)) {
+                            byUser[uid].push(r);
+                        }
+                    });
                     Object.keys(byUser).forEach(uid => {
                         byUser[uid].sort((a,b)=>{
                             const ta = a.timestamp?.toDate?.() ? a.timestamp.toDate() : (a.timestamp ? new Date(a.timestamp) : new Date(0));
@@ -3852,15 +3860,18 @@
                     const pendingLeavesByUserId = {};
                     try {
                         const lSnap = await getDocs(query(collection(db, 'leaves'), where('status','==','pending'), where('startTime','<=', tsEnd)));
+                        const comm = state.currentCommunity || null;
                         lSnap.forEach(d => {
                             const data = d.data() || {};
                             const uid = data.userId;
                             // 客端過濾：endTime >= 今日起
                             const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
                             const endT = toDate(data.endTime);
-                            if (uid && (!endT || endT >= rangeStart)) {
-                                (pendingLeavesByUserId[uid] ||= []).push({ id: d.id, ...data });
-                            }
+                            if (!uid) return;
+                            if (endT && endT < rangeStart) return; // 已在範圍前結束
+                            // 嚴格社區過濾：僅本社區的請假列入
+                            if (comm && !recordMatchesCommunityStrict(data, comm)) return;
+                            (pendingLeavesByUserId[uid] ||= []).push({ id: d.id, ...data });
                         });
                     } catch (_) {}
 
@@ -3868,6 +3879,7 @@
                     const approvedLeaveDaysByUserId = {};
                     try {
                         const aSnap = await getDocs(query(collection(db, 'leaves'), where('status','==','approved'), where('startTime','<=', tsEnd)));
+                        const comm = state.currentCommunity || null;
                         aSnap.forEach(d => {
                             const data = d.data() || {};
                             const uid = data.userId;
@@ -3875,6 +3887,7 @@
                             const st = toDate(data.startTime);
                             const et = toDate(data.endTime);
                             if (!uid) return;
+                            if (comm && !recordMatchesCommunityStrict(data, comm)) return; // 嚴格僅計入本社區核准假單
                             if (st && et && et >= rangeStart) {
                                 // 標記覆蓋到的每一天
                                 let cur = new Date(st.getFullYear(), st.getMonth(), st.getDate());
