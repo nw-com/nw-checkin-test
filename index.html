@@ -4230,12 +4230,16 @@
                         }
                     } catch (_) {}
 
+                    // 嚴格依目前社區過濾：今日異常僅針對目前社區
+                    const currentComm = state.currentCommunity || null;
+                    const recsInCurrent = currentComm ? recs.filter(r => recordMatchesCommunityStrict(r, currentComm)) : recs;
+
                     // 計算異常
                     const anomalies = [];
                     // 雙重打卡
                     {
                         let startCount = 0, endCount = 0;
-                        for (const r of recs) {
+                        for (const r of recsInCurrent) {
                             const dt = r.timestamp?.toDate?.() ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
                             if (!dt) continue;
                             const y = dt.getFullYear(), m = dt.getMonth()+1, d = dt.getDate();
@@ -4257,7 +4261,7 @@
                     if (Array.isArray(svcIds) && svcIds.length > 0) {
                         const currentCommId = state.currentCommunity?.id || null;
                         const currentCommCode = state.currentCommunity?.code || state.currentCommunity?.communityCode || null;
-                        for (const r of recs) {
+                        for (const r of recsInCurrent) {
                             const recCommId = (r.communityId || '').trim();
                             const recCommCode = (r.communityCode || r.community?.code || '').trim();
                             // 若紀錄屬於其他社區，則不顯示定位異常
@@ -16730,6 +16734,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                  const modalId = `camera-modal-${Date.now()}`;
                 let videoStream;
     const capturedPhotos = []; // { blob, description }
+    let isSubmitting = false; // 防重複提交鎖
     let handleEsc;
 
     const stopCamera = () => {
@@ -16897,20 +16902,24 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 document.getElementById('add-another-btn').addEventListener('click', saveAndPrepareNext);
 
                 document.getElementById('finish-btn').addEventListener('click', () => {
+                    if (isSubmitting) { return; }
                     if (previewView.classList.contains('hide') === false) {
                          canvas.toBlob((blob) => {
                             if (blob) {
                                 const description = descriptionInput.value;
                                 capturedPhotos.push({ blob, description });
                             }
+                            isSubmitting = true;
                             completeClockIn();
                          }, 'image/jpeg', 0.8);
                     } else {
+                        isSubmitting = true;
                         completeClockIn();
                     }
                 });
 
                 const completeClockIn = async () => {
+                    if (isSubmitting !== true) { isSubmitting = true; }
                     if (capturedPhotos.length === 0) {
                         showToast("請至少拍攝一張照片", true);
                         return;
@@ -17200,6 +17209,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                     } finally {
                         showLoading(false);
                         stopCamera();
+                        isSubmitting = false;
                     }
                 };
 
