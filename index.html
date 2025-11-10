@@ -5285,10 +5285,10 @@
                 const showOutbound = title === '總幹事' || title === '秘書';
                 const gridColsClass = showOutbound ? 'grid grid-cols-4 gap-2 pt-4' : 'grid grid-cols-3 gap-2 pt-4';
                 const buttonsHtml = `
-                    <button id="work-start-btn" data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
-                    <button id="work-end-btn" data-type="下班" class="clock-in-btn bg-gray-300 text-white font-semibold py-3 px-4 rounded-md cursor-not-allowed disabled" disabled>下班打卡</button>
-                    ${showOutbound ? '<button id="outbound-cycle-btn" data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>' : ''}
-                    <button id="return-btn" data-type="返回" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">返回打卡</button>
+                    <button id="work-start-btn" data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班<br>打卡</button>
+                    <button id="work-end-btn" data-type="下班" class="clock-in-btn bg-gray-300 text-white font-semibold py-3 px-4 rounded-md cursor-not-allowed disabled" disabled>下班<br>打卡</button>
+                    ${showOutbound ? '<button id="outbound-cycle-btn" data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出<br>打卡</button>' : ''}
+                    <button id="return-btn" data-type="返回" class="clock-in-btn bg-gray-300 text-white font-semibold py-3 px-4 rounded-md cursor-not-allowed disabled" disabled>返回<br>打卡</button>
                 `;
                 container.innerHTML = `
                     <div class="p-4 h-full flex flex-col">

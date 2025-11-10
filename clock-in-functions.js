@@ -628,14 +628,14 @@ function updateButtonStatus() {
     enableSpecialButton('臨時請假', 'bg-orange-500');
     enableSpecialButton('特殊勤務', 'bg-purple-500');
 
-    // 返回按鈕預設顯示且可用（藍），並由按鈕點擊流程統一檢查地理範圍
+    // 返回按鈕預設顯示且不可用（灰）；僅在「離開」之後變為深綠可動作
     const returnBtn = document.getElementById('return-btn');
     if (returnBtn) {
-        returnBtn.disabled = false;
-        returnBtn.classList.remove('bg-gray-500', 'hover:bg-gray-600', 'bg-green-700', 'hover:bg-green-800', 'bg-gray-300', 'cursor-not-allowed', 'disabled');
-        returnBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        returnBtn.disabled = true;
+        returnBtn.classList.remove('bg-gray-500', 'hover:bg-gray-600', 'bg-green-700', 'hover:bg-green-800', 'bg-blue-500', 'hover:bg-blue-600');
+        returnBtn.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
         returnBtn.dataset.type = '返回';
-        returnBtn.textContent = '返回打卡';
+        returnBtn.innerHTML = '返回<br>打卡';
     }
 
     // 複合循環按鈕（外出/抵達/離開/返回）動態設定器
@@ -643,7 +643,8 @@ function updateButtonStatus() {
         const cycleBtn = document.getElementById('outbound-cycle-btn');
         if (!cycleBtn) return;
         cycleBtn.dataset.type = nextType;
-        cycleBtn.textContent = label;
+        // 將「打卡」移至下一行
+        cycleBtn.innerHTML = String(label).replace('打卡', '<br>打卡');
         cycleBtn.disabled = false;
         cycleBtn.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled',
                                   'bg-blue-500', 'hover:bg-blue-600', 'bg-teal-700', 'hover:bg-teal-800',
@@ -665,9 +666,9 @@ function updateButtonStatus() {
 
         // 設定文字與型別
         startBtn.dataset.type = '上班';
-        startBtn.textContent = '上班打卡';
+        startBtn.innerHTML = '上班<br>打卡';
         endBtn.dataset.type = '下班';
-        endBtn.textContent = '下班打卡';
+        endBtn.innerHTML = '下班<br>打卡';
 
         // 依當前狀態切換按鈕顏色與禁用
         const workingStates = ['上班','外出','抵達','離開','返回'];
@@ -730,7 +731,8 @@ function updateButtonStatus() {
             if (returnBtn) {
                 returnBtn.disabled = false;
                 returnBtn.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled');
-                returnBtn.classList.add('bg-green-700');
+                returnBtn.classList.add('bg-green-700', 'hover:bg-green-800');
+                returnBtn.innerHTML = '返回<br>打卡';
             }
             break;
         case '返回':
@@ -739,8 +741,9 @@ function updateButtonStatus() {
             setOutboundCycleButton('外出', '外出打卡', 'bg-blue-500');
             if (returnBtn) {
                 returnBtn.disabled = true;
-                returnBtn.classList.remove('bg-green-700');
+                returnBtn.classList.remove('bg-green-700', 'hover:bg-green-800');
                 returnBtn.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
+                returnBtn.innerHTML = '返回<br>打卡';
             }
             break;
         case '臨時請假':
