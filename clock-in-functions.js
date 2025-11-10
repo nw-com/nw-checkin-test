@@ -628,12 +628,12 @@ function updateButtonStatus() {
     enableSpecialButton('臨時請假', 'bg-orange-500');
     enableSpecialButton('特殊勤務', 'bg-purple-500');
 
-    // 返回按鈕預設顯示且不可用（灰色）
+    // 返回按鈕預設顯示且可用（藍），並由按鈕點擊流程統一檢查地理範圍
     const returnBtn = document.getElementById('return-btn');
     if (returnBtn) {
-        returnBtn.disabled = true;
-        returnBtn.classList.remove('bg-gray-500', 'hover:bg-gray-600', 'bg-green-700', 'hover:bg-green-800');
-        returnBtn.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
+        returnBtn.disabled = false;
+        returnBtn.classList.remove('bg-gray-500', 'hover:bg-gray-600', 'bg-green-700', 'hover:bg-green-800', 'bg-gray-300', 'cursor-not-allowed', 'disabled');
+        returnBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
         returnBtn.dataset.type = '返回';
         returnBtn.textContent = '返回打卡';
     }
