@@ -4070,14 +4070,19 @@
                     });
                     // 角色：社區維護/管理可管理異常（持久化、清理、刪除）
                     const role = state.currentUserData?.role || '';
-                    const anomalyManagers = ['admin','hr','manager','junior_manager','community_admin','社區管理員','總幹事'];
+                    // 僅限最高權限角色執行異常持久化，避免一般管理階層因權限不足導致 400
+                    const anomalyManagers = ['admin','hr'];
                     const canManage = anomalyManagers.includes(role);
-                    // 僅管理角色執行持久化與自動清理，避免一般用戶觸發 400
-                    if (canManage) {
+                    // 預設停用由前端進行異常持久化，以避免 Firestore 400（權限或規則不符）
+                    // 若需啟用，請在初始化處設定 state.enableClientAnomalyWrites = true
+                    const enableClientAnomalyWrites = !!(window.state && window.state.enableClientAnomalyWrites);
+                    if (canManage && enableClientAnomalyWrites) {
                         try {
                             await persistAnomalies(filtered, targetCommunityId);
                             await cleanupOldAnomalies(targetCommunityId);
-                        } catch (_) {}
+                        } catch (err) {
+                            console.warn('持久化異常失敗，已跳過：', err && (err.message || err));
+                        }
                     }
                     // 顯示通知（不顯示刪除鍵，24 小時後自動過期）
                     let html = '';
@@ -7062,6 +7067,7 @@
                                         if (!dateStr || !timeStr) { showToast('請填寫日期與時間', true); return; }
                                         if (['外出','抵達','離開'].includes(type) && (!reason || !locationName)) { showToast('外出/抵達/離開需填寫事由與地點', true); return; }
                                         const dt = new Date(`${dateStr}T${timeStr}:00`);
+                                        // 僅保留 Firestore 規則允許的欄位，避免 400 錯誤
                                         const payload = {
                                             userId: user.uid,
                                             type,
@@ -7069,9 +7075,7 @@
                                             locationName: locationName || '',
                                             requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                                             targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
-                                            status: 'pending',
-                                            communityId: state.currentCommunity?.id || null,
-                                            communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
+                                            status: 'pending'
                                         };
                                         await addDoc(collection(db, 'retroClockRequests'), payload);
                                         showToast('已送出修改申請');
@@ -7260,6 +7264,7 @@
                                                         if (!dateStr || !timeStr) { showToast('請填寫日期與時間', true); return; }
                                                         if (['外出','抵達','離開'].includes(type) && (!reason || !locationName)) { showToast('外出/抵達/離開需填寫事由與地點', true); return; }
                                                         const dt = new Date(`${dateStr}T${timeStr}:00`);
+                                                        // 僅保留 Firestore 規則允許的欄位，避免 400 錯誤
                                                         const payload = {
                                                             userId: user.uid,
                                                             type,
@@ -7267,9 +7272,7 @@
                                                             locationName: locationName || '',
                                                             requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                                                             targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
-                                                            status: 'pending',
-                                                            communityId: state.currentCommunity?.id || null,
-                                                            communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
+                                                            status: 'pending'
                                                         };
                                                         await addDoc(collection(db, 'retroClockRequests'), payload);
                                                         showToast('已送出修改申請');
@@ -7856,6 +7859,7 @@
                     const dt = new Date(`${dateStr}T${timeStr}:00`);
                     const { addDoc, collection, Timestamp } = window.__fs; const db = window.__db; const user = window.__auth?.currentUser;
                     if (!user) { showToast('尚未登入', true); return; }
+                    // 僅保留 Firestore 規則允許的欄位，避免 400 錯誤
                     const payload = {
                         userId: user.uid,
                         type,
@@ -7863,9 +7867,7 @@
                         locationName: locationName || '',
                         requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                         targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
-                        status: 'pending',
-                        communityId: state.currentCommunity?.id || null,
-                        communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
+                        status: 'pending'
                     };
                     try {
                         await addDoc(collection(db, 'retroClockRequests'), payload);
@@ -17431,7 +17433,8 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 };
                 
                 const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly`;
+                // 加上 loading=async 以符合 Google Maps 最佳實務，避免 console 警告
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly&loading=async`;
                 script.async = true;
                 script.defer = true;
                 
