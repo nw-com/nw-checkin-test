@@ -5346,8 +5346,8 @@
                         // 先取按鈕的打卡類型
                         const type = btn?.dataset?.type || e.currentTarget?.dataset?.type || e.target?.dataset?.type;
                         
-                        // 外出打卡不限制地點：略過社區半徑檢查
-                        if (type !== '外出') {
+                        // 外出/抵達/離開不限制地點：略過社區半徑檢查
+                        if (!['外出','抵達','離開'].includes(type)) {
                             // 半徑內檢查：必須在社區範圍內才可打卡（外出除外）
                             try {
                                 const { center, radius } = await fetchCommunityCenterAndRadius();
@@ -17243,10 +17243,13 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 const confirmBtn = document.getElementById('clockin-confirm-btn');
                 confirmBtn && confirmBtn.addEventListener('click', async () => {
                     if (!state.currentLocation) { alert('無法取得目前位置，請稍後再試'); return; }
-                    if (!center || typeof radius !== 'number') { showToast('尚未設定打卡範圍，請聯絡管理員', true); return; }
-                    const dist = calculateDistanceMeters(state.currentLocation.lat, state.currentLocation.lng, center.lat, center.lng);
-                    if (dist > radius) { showToast('您不在社區打卡範圍內，請移動至範圍內再打卡', true); return; }
                     const t = confirmBtn.getAttribute('data-type');
+                    // 外出/抵達/離開不限制地點：略過社區半徑檢查
+                    if (!['外出','抵達','離開'].includes(t)) {
+                        if (!center || typeof radius !== 'number') { showToast('尚未設定打卡範圍，請聯絡管理員', true); return; }
+                        const dist = calculateDistanceMeters(state.currentLocation.lat, state.currentLocation.lng, center.lat, center.lng);
+                        if (dist > radius) { showToast('您不在社區打卡範圍內，請移動至範圍內再打卡', true); return; }
+                    }
                     openCameraModal(t, state.currentLocation);
                 });
                 
