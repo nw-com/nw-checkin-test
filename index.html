@@ -5287,7 +5287,7 @@
                 const buttonsHtml = `
                     <button id="work-start-btn" data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
                     <button id="work-end-btn" data-type="下班" class="clock-in-btn bg-gray-300 text-white font-semibold py-3 px-4 rounded-md cursor-not-allowed disabled" disabled>下班打卡</button>
-                    ${showOutbound ? '<button id="outbound-btn" data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>' : ''}
+                    ${showOutbound ? '<button id="outbound-cycle-btn" data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>' : ''}
                 `;
                 container.innerHTML = `
                     <div class="p-4 h-full flex flex-col">
@@ -5385,40 +5385,21 @@
                             // 創建標題
                             const title = document.createElement('h3');
                             title.className = 'text-lg font-semibold mb-4';
-                            title.textContent = '請選擇勤務項目並輸入外出地點';
+                            title.textContent = '請輸入外出事由與地點';
 
-                            // 勤務項目選單
-                            const dutyContainer = document.createElement('div');
-                            dutyContainer.className = 'mb-4';
-                            const dutyLabel = document.createElement('label');
-                            dutyLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
-                            dutyLabel.textContent = '勤務項目';
-                            const dutySelect = document.createElement('select');
-                            dutySelect.id = 'outbound-duty-type';
-                            dutySelect.className = 'w-full border border-gray-300 rounded-md p-2';
-                            ['例行督察','例會','區大','臨時會','簡報','其他'].forEach(opt => {
-                                const o = document.createElement('option');
-                                o.value = opt;
-                                o.textContent = opt;
-                                dutySelect.appendChild(o);
-                            });
-                            dutyContainer.appendChild(dutyLabel);
-                            dutyContainer.appendChild(dutySelect);
-
-                            // 其他勤務項目輸入框（預設隱藏）
-                            const otherDutyContainer = document.createElement('div');
-                            otherDutyContainer.id = 'outbound-other-duty-container';
-                            otherDutyContainer.className = 'mb-4 hidden';
-                            const otherDutyLabel = document.createElement('label');
-                            otherDutyLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
-                            otherDutyLabel.textContent = '其他勤務項目';
-                            const otherDutyInput = document.createElement('input');
-                            otherDutyInput.id = 'outbound-other-duty';
-                            otherDutyInput.type = 'text';
-                            otherDutyInput.className = 'w-full border border-gray-300 rounded-md p-2';
-                            otherDutyInput.placeholder = '請輸入勤務項目';
-                            otherDutyContainer.appendChild(otherDutyLabel);
-                            otherDutyContainer.appendChild(otherDutyInput);
+                            // 外出事由（自定義）
+                            const reasonContainer = document.createElement('div');
+                            reasonContainer.className = 'mb-4';
+                            const reasonLabel = document.createElement('label');
+                            reasonLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+                            reasonLabel.textContent = '外出事由';
+                            const reasonInput = document.createElement('input');
+                            reasonInput.id = 'outbound-duty-custom';
+                            reasonInput.type = 'text';
+                            reasonInput.className = 'w-full border border-gray-300 rounded-md p-2';
+                            reasonInput.placeholder = '請輸入外出事由';
+                            reasonContainer.appendChild(reasonLabel);
+                            reasonContainer.appendChild(reasonInput);
                             
                             // 創建輸入框
                             const input = document.createElement('input');
@@ -5431,14 +5412,6 @@
                             const buttonContainer = document.createElement('div');
                             buttonContainer.className = 'flex justify-end space-x-2';
                             
-                            // 勤務項目切換事件（顯示/隱藏其他輸入框）
-                            dutySelect && dutySelect.addEventListener('change', () => {
-                                if (dutySelect.value === '其他') {
-                                    otherDutyContainer.classList.remove('hidden');
-                                } else {
-                                    otherDutyContainer.classList.add('hidden');
-                                }
-                            });
                             // 創建取消按鈕
                             const cancelButton = document.createElement('button');
                             cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-md';
@@ -5453,16 +5426,10 @@
                             confirmButton.className = 'px-4 py-2 bg-blue-500 text-white rounded-md';
                             confirmButton.textContent = '確認';
                             confirmButton.addEventListener('click', () => {
-                                const dutyTypeEl = document.getElementById('outbound-duty-type');
-                                const dutyType = dutyTypeEl ? dutyTypeEl.value : '';
-                                let dutyName = dutyType;
-                                if (dutyType === '其他') {
-                                    const otherDuty = document.getElementById('outbound-other-duty').value.trim();
-                                    if (!otherDuty) {
-                                        alert('請輸入勤務項目');
-                                        return;
-                                    }
-                                    dutyName = otherDuty;
+                                const dutyName = (document.getElementById('outbound-duty-custom')?.value || '').trim();
+                                if (!dutyName) {
+                                    alert('請輸入外出事由');
+                                    return;
                                 }
                                 const locationText = document.getElementById('outbound-location').value.trim();
                                 if (locationText) {
@@ -5543,9 +5510,8 @@
                             buttonContainer.appendChild(cancelButton);
                             buttonContainer.appendChild(confirmButton);
                             modal.appendChild(title);
-                            // 插入勤務項目選單與其他輸入
-                            modal.appendChild(dutyContainer);
-                            modal.appendChild(otherDutyContainer);
+                            // 插入自定義事由
+                            modal.appendChild(reasonContainer);
                             modal.appendChild(input);
                             modal.appendChild(buttonContainer);
                             

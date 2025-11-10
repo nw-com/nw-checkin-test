@@ -697,6 +697,8 @@ function updateButtonStatus() {
         case 'none':
             // 尚未打卡，只啟用上班（切換按鈕設為上班）
             setWorkToggleButton('上班', '上班打卡', 'bg-green-500');
+            // 讓外出打卡在初始狀態也可動作（藍色）
+            setOutboundCycleButton('外出', '外出打卡', 'bg-blue-500');
             break;
         case '上班':
             // 已上班：下班可動作（紅），外出可動作（藍），返回不可動作（灰）
