@@ -2277,6 +2277,11 @@
                                 usnap.forEach(d => users.push({ id: d.id, ...d.data() }));
                             } catch (_) {}
 
+                            // 目前使用者與角色（非管理端僅針對本人計算圓點）
+                            const currentUser = state.currentUser || window.__auth?.currentUser || null;
+                            const currentRole = (state.currentUserData?.role || '').trim();
+                            const isManagerRole = ['admin','hr','manager','junior_manager'].includes(currentRole);
+
                             const parseHM = (iso, hm) => {
                                 if (!iso || !hm) return null;
                                 const dt = new Date(`${iso}T00:00:00`);
@@ -2292,12 +2297,13 @@
                             const communitiesByCode = Object.fromEntries(currentList.map(c => [ (c.code||'').trim(), c.id ]));
                             const usersByCommunityId = {};
                             for (const c of currentList) {
-                                usersByCommunityId[c.id] = users.filter(u => {
+                                const allMembers = users.filter(u => {
                                     const ids = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
                                     if (ids.includes(c.id)) return true;
                                     const code = (u.serviceCommunityCode || '').trim();
                                     return code && communitiesByCode[code] === c.id;
                                 });
+                                usersByCommunityId[c.id] = isManagerRole ? allMembers : allMembers.filter(u => u.id === (currentUser?.uid || ''));
                             }
 
                             // 今日班表一次抓取（postSchedules，dateIso=今日）
@@ -2362,14 +2368,16 @@
                                     }
                                 }
 
-                                // 待審假單
+                                // 待審假單（僅計入屬於當前社區的申請；舊資料回退以名稱包含）
                                 for (const u of communityUsers) {
-                                    if ((pendingLeavesByUserId[u.id] || []).length > 0) { hasPendingLeave = true; break; }
+                                    const leavesForUser = (pendingLeavesByUserId[u.id] || []).filter(l => recordMatchesCommunityStrict(l, c) || recordMatchesCommunityByName(l, c));
+                                    if (leavesForUser.length > 0) { hasPendingLeave = true; break; }
                                 }
 
-                                // 待同意打卡修改申請
+                                // 待同意打卡修改申請（僅計入當前社區；舊資料回退以名稱包含）
                                 for (const u of communityUsers) {
-                                    if ((pendingRetrosByUserId[u.id] || []).length > 0) { hasPendingRetro = true; break; }
+                                    const retrosForUser = (pendingRetrosByUserId[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c) || recordMatchesCommunityByName(r, c));
+                                    if (retrosForUser.length > 0) { hasPendingRetro = true; break; }
                                 }
 
                                 // 巡邏逾時未開始邏輯已移除
@@ -7055,7 +7063,9 @@
                                             locationName: locationName || '',
                                             requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                                             targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
-                                            status: 'pending'
+                                            status: 'pending',
+                                            communityId: state.currentCommunity?.id || null,
+                                            communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
                                         };
                                         await addDoc(collection(db, 'retroClockRequests'), payload);
                                         showToast('已送出修改申請');
@@ -7251,7 +7261,9 @@
                                                             locationName: locationName || '',
                                                             requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                                                             targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
-                                                            status: 'pending'
+                                                            status: 'pending',
+                                                            communityId: state.currentCommunity?.id || null,
+                                                            communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
                                                         };
                                                         await addDoc(collection(db, 'retroClockRequests'), payload);
                                                         showToast('已送出修改申請');
@@ -7845,7 +7857,9 @@
                         locationName: locationName || '',
                         requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                         targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
-                        status: 'pending'
+                        status: 'pending',
+                        communityId: state.currentCommunity?.id || null,
+                        communityCode: state.currentCommunity?.code || state.currentCommunity?.communityCode || null
                     };
                     try {
                         await addDoc(collection(db, 'retroClockRequests'), payload);
