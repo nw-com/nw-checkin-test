@@ -5280,8 +5280,9 @@
             }
 
             function renderClockInLocation(container) {
-                const role = state.currentUserData?.role || '';
-                const showOutbound = role === '總幹事' || role === '秘書';
+                // 以職稱或申請職稱判斷是否顯示外出按鈕（避免僅用 role='user' 造成隱藏）
+                const title = (state.currentUserData?.jobTitle || state.currentUserData?.applicationTitle || state.currentUserData?.role || '').trim();
+                const showOutbound = title === '總幹事' || title === '秘書';
                 const gridColsClass = showOutbound ? 'grid grid-cols-3 gap-2 pt-4' : 'grid grid-cols-2 gap-2 pt-4';
                 const buttonsHtml = `
                     <button id="work-start-btn" data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
@@ -5341,24 +5342,29 @@
                             alert("無法取得目前位置，請稍後再試");
                             return;
                         }
-                        // 半徑內檢查：必須在社區範圍內才可打卡
-                        try {
-                            const { center, radius } = await fetchCommunityCenterAndRadius();
-                            if (!center || typeof radius !== 'number') {
-                                showToast('尚未設定社區中心或打卡半徑，請聯絡管理員', true);
-                                return;
-                            }
-                            const dist = calculateDistanceMeters(state.currentLocation.lat, state.currentLocation.lng, center.lat, center.lng);
-                            if (dist > radius) {
-                                showToast('您不在社區打卡範圍內，請移動至範圍內再打卡', true);
-                                return;
-                            }
-                        } catch (_) {
-                            showToast('檢查打卡範圍時發生錯誤，請稍後再試', true);
-                            return;
-                        }
                         
-                        const type = e.target.dataset.type;
+                        // 先取按鈕的打卡類型
+                        const type = btn?.dataset?.type || e.currentTarget?.dataset?.type || e.target?.dataset?.type;
+                        
+                        // 外出打卡不限制地點：略過社區半徑檢查
+                        if (type !== '外出') {
+                            // 半徑內檢查：必須在社區範圍內才可打卡（外出除外）
+                            try {
+                                const { center, radius } = await fetchCommunityCenterAndRadius();
+                                if (!center || typeof radius !== 'number') {
+                                    showToast('尚未設定社區中心或打卡半徑，請聯絡管理員', true);
+                                    return;
+                                }
+                                const dist = calculateDistanceMeters(state.currentLocation.lat, state.currentLocation.lng, center.lat, center.lng);
+                                if (dist > radius) {
+                                    showToast('您不在社區打卡範圍內，請移動至範圍內再打卡', true);
+                                    return;
+                                }
+                            } catch (_) {
+                                showToast('檢查打卡範圍時發生錯誤，請稍後再試', true);
+                                return;
+                            }
+                        }
                         
                         // 外出打卡需要先輸入地點
                         if (type === "外出") {
