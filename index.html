@@ -2298,7 +2298,7 @@
                             // 目前使用者與角色（非管理端僅針對本人計算圓點）
                             const currentUser = state.currentUser || window.__auth?.currentUser || null;
                             const currentRole = (state.currentUserData?.role || '').trim();
-                            const isManagerRole = ['admin','hr','manager','junior_manager'].includes(currentRole);
+                            // 改為所有角色皆採社區整體聚合，不僅限管理角色
 
                             const parseHM = (iso, hm) => {
                                 if (!iso || !hm) return null;
@@ -2321,7 +2321,8 @@
                                     const code = (u.serviceCommunityCode || '').trim();
                                     return code && communitiesByCode[code] === c.id;
                                 });
-                                usersByCommunityId[c.id] = isManagerRole ? allMembers : allMembers.filter(u => u.id === (currentUser?.uid || ''));
+                                // 不區分角色，統一以該社區所有成員為基準計算圓點
+                                usersByCommunityId[c.id] = allMembers;
                             }
 
                             // 今日班表一次抓取（postSchedules，dateIso=今日）
@@ -2428,12 +2429,7 @@
                             try {
                                 const nowZ = new Date();
                                 const tsNowZ = Timestamp?.fromDate ? Timestamp.fromDate(nowZ) : nowZ;
-                                let qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ));
-                                try {
-                                    if (!isManagerRole && (currentUser?.uid)) {
-                                        qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ), where('userId','==', currentUser.uid));
-                                    }
-                                } catch (_) { /* 在某些 Firestore 版本不可組合 where 時退回全部 */ }
+                                const qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ));
                                 const aSnap = await getDocs(qA);
                                 aSnap.forEach(d => {
                                     const data = d.data() || {};
