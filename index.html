@@ -2568,69 +2568,7 @@
                                 const hasNoCheckinToday = (communityUsers.length > 0) && !hadCheckinToday;
                                 results[c.id] = { hasAbnormalLocation, hasPendingLeave, hasPendingRetro, hasDoublePunch, hasNoCheckinToday };
                             }
-
-                            // 取近三日持久化異常（未抑制且未過期），按社區聚合；
-                            // 非管理角色僅關注「本人」的異常，避免與儀表板顯示不一致
-                            const hasActiveAnomaliesByCommunity = {};
-                            try {
-                                const nowZ = new Date();
-                                const tsNowZ = Timestamp?.fromDate ? Timestamp.fromDate(nowZ) : nowZ;
-                                let qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ));
-                                try {
-                                    if (!isManagerRole && (currentUser?.uid)) {
-                                        qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ), where('userId','==', currentUser.uid));
-                                    }
-                                } catch (_) { /* 在某些 Firestore 版本不可組合 where 時退回全部 */ }
-                                const aSnap = await getDocs(qA);
-                                aSnap.forEach(d => {
-                                    const data = d.data() || {};
-                                    const cid = data.communityId;
-                                    if (data.suppressed === true) return;
-                                    if (cid) hasActiveAnomaliesByCommunity[cid] = true;
-                                });
-                            } catch (_) {}
-
-                            // 一次性套用樣式與圓點（紅>橙>藍）；
-                            // 紅點：重大異常（持久化/重複/異地）；重大異常加淡紅底；
-                            // 橘點：請假（待核准）
-                            // 藍點：打卡修改申請（待同意）
-                            for (const c of currentList) {
-                                const btn = container.querySelector(`.enter-community[data-id="${c.id}"]`);
-                                if (!btn) continue;
-                                const r = results[c.id] || {};
-                                const add = (cls) => cls.forEach(cn => btn.classList.add(cn));
-                                const remove = (cls) => cls.forEach(cn => btn.classList.remove(cn));
-                                const hasAnomalyMajor = !!(hasActiveAnomaliesByCommunity[c.id] || r.hasDoublePunch || r.hasAbnormalLocation);
-                                const hasLeave = !!r.hasPendingLeave;
-                                const hasRetro = !!r.hasPendingRetro;
-                                const redDot = btn.querySelector('.comm-dot-red');
-                                const orangeDot = btn.querySelector('.comm-dot-orange');
-                                const blueDot = btn.querySelector('.comm-dot-blue');
-                                // 紅點：僅在重大異常時顯示（與儀表板一致）
-                                if (hasAnomalyMajor) {
-                                    redDot && redDot.classList.remove('hidden');
-                                } else {
-                                    redDot && redDot.classList.add('hidden');
-                                }
-                                // 紅底僅在重大異常時套用
-                                if (hasAnomalyMajor) {
-                                    remove(['bg-white','hover:bg-red-50']); add(['bg-red-50','border-red-300','text-red-800']);
-                                }
-                                if (hasLeave) {
-                                    orangeDot && orangeDot.classList.remove('hidden');
-                                } else {
-                                    orangeDot && orangeDot.classList.add('hidden');
-                                }
-                                if (hasRetro) {
-                                    blueDot && blueDot.classList.remove('hidden');
-                                } else {
-                                    blueDot && blueDot.classList.add('hidden');
-                                }
-                            }
-                        } catch (e) {
-                            console.warn('套用社區異常標色失敗', e);
-                        }
-                    })();
+                            // 即時監聽已負責聚合持久化異常並套用圓點，移除一次性查詢與套色。
 
                     // 依社區顯示：帳號申請待核准（淺紫色底）
                     // 並在無待核准時移除既有紫色標示；若同名已有「已核准」則忽略其 pending（避免殘留紫色）
