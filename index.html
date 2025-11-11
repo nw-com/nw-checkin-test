@@ -2339,177 +2339,30 @@
 
                             // 巡邏任務相關邏輯已移除
 
-                            // --- 即時監聽資料來源（pending leaves / pending retros / anomalies / 今日打卡） ---
-                            const { onSnapshot } = fs;
-                            let pendingLeavesByUserId = {};
-                            let pendingRetrosByUserId = {};
-                            let hasActiveAnomaliesByCommunity = {};
-                            let results = {};
-
-                            // 重新計算並套用圓點
-                            function recomputeCommunityDots() {
-                                try {
-                                    const now = new Date();
-                                    results = {};
-                                    for (const c of currentList) {
-                                        let hasAbnormalLocation = false;
-                                        let hasPendingLeave = false;
-                                        let hasDoublePunch = false;
-                                        let hasPendingRetro = false;
-                                        let hadCheckinToday = false;
-
-                                        const communityUsers = usersByCommunityId[c.id] || [];
-
-                                        // 位置異常（僅本社區）
-                                        if (markLocation) {
-                                            outerLoc: for (const u of communityUsers) {
-                                                const recs = (recordsByUser[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c));
-                                                for (const r of recs) {
-                                                    const abnormal = computeRecordAbnormal(r, [c.id]);
-                                                    if (abnormal && abnormal.isAbnormal) { hasAbnormalLocation = true; break outerLoc; }
-                                                }
-                                            }
-                                        }
-
-                                        // 待審假單（僅本社區，舊資料回退名稱）
-                                        for (const u of communityUsers) {
-                                            const leavesForUser = (pendingLeavesByUserId[u.id] || []).filter(l => recordMatchesCommunityStrict(l, c) || recordMatchesCommunityByName(l, c));
-                                            if (leavesForUser.length > 0) { hasPendingLeave = true; break; }
-                                        }
-
-                                        // 待同意補打卡（僅本社區，舊資料回退名稱）
-                                        for (const u of communityUsers) {
-                                            const retrosForUser = (pendingRetrosByUserId[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c) || recordMatchesCommunityByName(r, c));
-                                            if (retrosForUser.length > 0) { hasPendingRetro = true; break; }
-                                        }
-
-                                        // 異常：今日存在重複上/下班打卡（僅本社區）
-                                        outerDouble: for (const u of communityUsers) {
-                                            const recs = (recordsByUser[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c));
-                                            let startCount = 0, endCount = 0;
-                                            for (const r of recs) {
-                                                const dt = r.timestamp?.toDate?.() ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
-                                                if (!dt) continue;
-                                                const y = dt.getFullYear(), m = dt.getMonth()+1, d = dt.getDate();
-                                                const ymd = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                                                if (ymd !== ymdToday) continue;
-                                                if (r.type === '上班') startCount++;
-                                                if (r.type === '下班') endCount++;
-                                                if (r.type === '上班' || r.type === '下班') hadCheckinToday = true;
-                                                if (startCount >= 2 || endCount >= 2) { hasDoublePunch = true; break outerDouble; }
-                                            }
-                                        }
-
-                                        results[c.id] = {
-                                            hasAbnormalLocation,
-                                            hasPendingLeave,
-                                            hasPendingRetro,
-                                            hasDoublePunch,
-                                            hasNoCheckinToday: (communityUsers.length > 0) && !hadCheckinToday
-                                        };
-                                    }
-
-                                    // 一次性套用樣式與圓點（紅>橙>藍）
-                                    for (const c of currentList) {
-                                        const btn = container.querySelector(`.enter-community[data-id="${c.id}"]`);
-                                        if (!btn) continue;
-                                        const r = results[c.id] || {};
-                                        const add = (cls) => cls.forEach(cn => btn.classList.add(cn));
-                                        const remove = (cls) => cls.forEach(cn => btn.classList.remove(cn));
-                                        const hasAnomalyMajor = !!(hasActiveAnomaliesByCommunity[c.id] || r.hasDoublePunch || r.hasAbnormalLocation);
-                                        const hasLeave = !!r.hasPendingLeave;
-                                        const hasRetro = !!r.hasPendingRetro;
-                                        const redDot = btn.querySelector('.comm-dot-red');
-                                        const orangeDot = btn.querySelector('.comm-dot-orange');
-                                        const blueDot = btn.querySelector('.comm-dot-blue');
-                                        if (hasAnomalyMajor) { redDot && redDot.classList.remove('hidden'); } else { redDot && redDot.classList.add('hidden'); }
-                                        if (hasAnomalyMajor) { remove(['bg-white','hover:bg-red-50']); add(['bg-red-50','border-red-300','text-red-800']); } else { remove(['bg-red-50','border-red-300','text-red-800']); add(['bg-white','hover:bg-red-50']); }
-                                        if (hasLeave) { orangeDot && orangeDot.classList.remove('hidden'); } else { orangeDot && orangeDot.classList.add('hidden'); }
-                                        if (hasRetro) { blueDot && blueDot.classList.remove('hidden'); } else { blueDot && blueDot.classList.add('hidden'); }
-                                    }
-                                } catch (e) {
-                                    console.warn('即時重算社區圓點失敗', e);
-                                }
-                            }
-
-                            // leaves（pending）
+                            // 待審假單（不限制日期；依使用者分組）
+                            const pendingLeavesByUserId = {};
                             try {
-                                const qLeaves = query(collection(db, 'leaves'), where('status','==','pending'));
-                                const unsubLeaves = onSnapshot(qLeaves, (snap) => {
-                                    pendingLeavesByUserId = {};
-                                    snap.forEach(d => {
-                                        const data = d.data() || {};
-                                        const uid = data.userId;
-                                        if (uid) (pendingLeavesByUserId[uid] ||= []).push({ id: d.id, ...data });
-                                    });
-                                    recomputeCommunityDots();
+                                const lSnap = await getDocs(query(collection(db, 'leaves'), where('status','==','pending')));
+                                lSnap.forEach(d => {
+                                    const data = d.data() || {};
+                                    const uid = data.userId;
+                                    if (uid) (pendingLeavesByUserId[uid] ||= []).push({ id: d.id, ...data });
                                 });
-                                state.activeListeners.push(unsubLeaves);
                             } catch (_) {}
 
-                            // retroClockRequests（pending）
+                            // 待同意打卡修改申請（retroClockRequests；依使用者分組）
+                            const pendingRetrosByUserId = {};
                             try {
-                                const qRetros = query(collection(db, 'retroClockRequests'), where('status','==','pending'));
-                                const unsubRetros = onSnapshot(qRetros, (snap) => {
-                                    pendingRetrosByUserId = {};
-                                    snap.forEach(d => {
-                                        const data = d.data() || {};
-                                        const uid = data.userId;
-                                        if (uid) (pendingRetrosByUserId[uid] ||= []).push({ id: d.id, ...data });
-                                    });
-                                    recomputeCommunityDots();
+                                const rSnap = await getDocs(query(collection(db, 'retroClockRequests'), where('status','==','pending')));
+                                rSnap.forEach(d => {
+                                    const data = d.data() || {};
+                                    const uid = data.userId;
+                                    if (uid) (pendingRetrosByUserId[uid] ||= []).push({ id: d.id, ...data });
                                 });
-                                state.activeListeners.push(unsubRetros);
                             } catch (_) {}
 
-                            // anomalies（expiresAt >= now），非管理角色僅監聽本人
-                            try {
-                                const nowZ = new Date();
-                                const tsNowZ = Timestamp?.fromDate ? Timestamp.fromDate(nowZ) : nowZ;
-                                let qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ));
-                                try {
-                                    if (!isManagerRole && (currentUser?.uid)) {
-                                        qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ), where('userId','==', currentUser.uid));
-                                    }
-                                } catch (_) {}
-                                const unsubAnoms = onSnapshot(qA, (snap) => {
-                                    hasActiveAnomaliesByCommunity = {};
-                                    snap.forEach(d => {
-                                        const data = d.data() || {};
-                                        if (data.suppressed === true) return;
-                                        const cid = data.communityId;
-                                        if (cid) hasActiveAnomaliesByCommunity[cid] = true;
-                                    });
-                                    recomputeCommunityDots();
-                                });
-                                state.activeListeners.push(unsubAnoms);
-                            } catch (_) {}
-
-                            // 今日打卡紀錄（clockInRecords，僅今日）即時監聽
-                            try {
-                                const qRec = query(collection(db, 'clockInRecords'), where('timestamp','>=', tsStart), where('timestamp','<=', tsEnd));
-                                const unsubRec = onSnapshot(qRec, (snap) => {
-                                    const nextRecordsByUser = {};
-                                    snap.forEach(d => {
-                                        const r = { id: d.id, ...d.data() };
-                                        (nextRecordsByUser[r.userId] ||= []).push(r);
-                                    });
-                                    // 排序以便判斷重複
-                                    Object.keys(nextRecordsByUser).forEach(uid => {
-                                        nextRecordsByUser[uid].sort((a,b) => {
-                                            const ta = a.timestamp?.toDate?.() ? a.timestamp.toDate().getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
-                                            const tb = b.timestamp?.toDate?.() ? b.timestamp.toDate().getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
-                                            return ta - tb;
-                                        });
-                                    });
-                                    recordsByUser = nextRecordsByUser;
-                                    recomputeCommunityDots();
-                                });
-                                state.activeListeners.push(unsubRec);
-                            } catch (_) {}
-
-                            // 初始渲染一次
-                            recomputeCommunityDots();
+                            // 計算所有社區異常結果（含：今日無任何打卡 → 只顯示紅點，不加紅底）
+                            const results = {};
                             const now = new Date();
 
                             for (const c of currentList) {
@@ -2568,7 +2421,69 @@
                                 const hasNoCheckinToday = (communityUsers.length > 0) && !hadCheckinToday;
                                 results[c.id] = { hasAbnormalLocation, hasPendingLeave, hasPendingRetro, hasDoublePunch, hasNoCheckinToday };
                             }
-                            // 即時監聽已負責聚合持久化異常並套用圓點，移除一次性查詢與套色。
+
+                            // 取近三日持久化異常（未抑制且未過期），按社區聚合；
+                            // 非管理角色僅關注「本人」的異常，避免與儀表板顯示不一致
+                            const hasActiveAnomaliesByCommunity = {};
+                            try {
+                                const nowZ = new Date();
+                                const tsNowZ = Timestamp?.fromDate ? Timestamp.fromDate(nowZ) : nowZ;
+                                let qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ));
+                                try {
+                                    if (!isManagerRole && (currentUser?.uid)) {
+                                        qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ), where('userId','==', currentUser.uid));
+                                    }
+                                } catch (_) { /* 在某些 Firestore 版本不可組合 where 時退回全部 */ }
+                                const aSnap = await getDocs(qA);
+                                aSnap.forEach(d => {
+                                    const data = d.data() || {};
+                                    const cid = data.communityId;
+                                    if (data.suppressed === true) return;
+                                    if (cid) hasActiveAnomaliesByCommunity[cid] = true;
+                                });
+                            } catch (_) {}
+
+                            // 一次性套用樣式與圓點（紅>橙>藍）；
+                            // 紅點：重大異常（持久化/重複/異地）；重大異常加淡紅底；
+                            // 橘點：請假（待核准）
+                            // 藍點：打卡修改申請（待同意）
+                            for (const c of currentList) {
+                                const btn = container.querySelector(`.enter-community[data-id="${c.id}"]`);
+                                if (!btn) continue;
+                                const r = results[c.id] || {};
+                                const add = (cls) => cls.forEach(cn => btn.classList.add(cn));
+                                const remove = (cls) => cls.forEach(cn => btn.classList.remove(cn));
+                                const hasAnomalyMajor = !!(hasActiveAnomaliesByCommunity[c.id] || r.hasDoublePunch || r.hasAbnormalLocation);
+                                const hasLeave = !!r.hasPendingLeave;
+                                const hasRetro = !!r.hasPendingRetro;
+                                const redDot = btn.querySelector('.comm-dot-red');
+                                const orangeDot = btn.querySelector('.comm-dot-orange');
+                                const blueDot = btn.querySelector('.comm-dot-blue');
+                                // 紅點：僅在重大異常時顯示（與儀表板一致）
+                                if (hasAnomalyMajor) {
+                                    redDot && redDot.classList.remove('hidden');
+                                } else {
+                                    redDot && redDot.classList.add('hidden');
+                                }
+                                // 紅底僅在重大異常時套用
+                                if (hasAnomalyMajor) {
+                                    remove(['bg-white','hover:bg-red-50']); add(['bg-red-50','border-red-300','text-red-800']);
+                                }
+                                if (hasLeave) {
+                                    orangeDot && orangeDot.classList.remove('hidden');
+                                } else {
+                                    orangeDot && orangeDot.classList.add('hidden');
+                                }
+                                if (hasRetro) {
+                                    blueDot && blueDot.classList.remove('hidden');
+                                } else {
+                                    blueDot && blueDot.classList.add('hidden');
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('套用社區異常標色失敗', e);
+                        }
+                    })();
 
                     // 依社區顯示：帳號申請待核准（淺紫色底）
                     // 並在無待核准時移除既有紫色標示；若同名已有「已核准」則忽略其 pending（避免殘留紫色）
