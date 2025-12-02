@@ -1532,10 +1532,11 @@
                         const loginPageNow = document.getElementById('login-page');
                         const appContainerNow = document.getElementById('app-container');
                         const resetPasswordPageNow = document.getElementById('reset-password-page');
+                        // 先顯示主容器並立即關閉載入遮罩，優化首屏切換
                         loginPageNow?.classList.add('hide');
                         resetPasswordPageNow?.classList.add('hide');
                         appContainerNow?.classList.remove('hide');
-                        showLoading(true);
+                        showLoading(false);
                     } catch (_) {}
                     state.forcedLogoutInProgress = false;
                     state.currentUser = user;
@@ -1591,10 +1592,12 @@
 
             // --- UI Initialization and Navigation ---
             function initializeAppUI() {
-                loadGoogleMapsScript();
+                // 非阻塞：稍後載入非必要資源，避免阻塞首屏
                 updateHeaderAvatar();
-                // 準備社區資料與標頭顯示
-                try { ensureCommunitiesCache().then(() => { computeAvailableCommunities(); updateHeaderCommunity(); }); } catch (_) {}
+                const idle = window.requestIdleCallback || (fn => setTimeout(fn, 0));
+                idle(() => { try { loadGoogleMapsScript(); } catch (_) {} });
+                // 準備社區資料與標頭顯示（延後執行，避免阻塞）
+                idle(() => { try { ensureCommunitiesCache().then(() => { computeAvailableCommunities(); updateHeaderCommunity(); }); } catch (_) {} });
                 // 加入頁首 LOGO/標題的點擊事件，直接回導覽頁（依社區）
                 try {
                     const headerLogo = document.getElementById('header-logo');
@@ -2387,16 +2390,14 @@
                                     }
                                 }
 
-                                // 待審假單（僅計入屬於當前社區的申請；舊資料回退以名稱包含）
+                                // 待審假單：以「社區成員是否有 pending」為準（假單通常無社區欄位）
                                 for (const u of communityUsers) {
-                                    const leavesForUser = (pendingLeavesByUserId[u.id] || []).filter(l => recordMatchesCommunityStrict(l, c) || recordMatchesCommunityByName(l, c));
-                                    if (leavesForUser.length > 0) { hasPendingLeave = true; break; }
+                                    if ((pendingLeavesByUserId[u.id] || []).length > 0) { hasPendingLeave = true; break; }
                                 }
 
-                                // 待同意打卡修改申請（僅計入當前社區；舊資料回退以名稱包含）
+                                // 待同意打卡修改申請：以「社區成員是否有 pending」為準（部分申請可能缺社區欄位）
                                 for (const u of communityUsers) {
-                                    const retrosForUser = (pendingRetrosByUserId[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c) || recordMatchesCommunityByName(r, c));
-                                    if (retrosForUser.length > 0) { hasPendingRetro = true; break; }
+                                    if ((pendingRetrosByUserId[u.id] || []).length > 0) { hasPendingRetro = true; break; }
                                 }
 
                                 // 巡邏逾時未開始邏輯已移除
@@ -17828,14 +17829,48 @@ const roleBorderClass = roleColorMap[titleKey] || null;
 
         // --- Initial Load ---
         document.addEventListener('DOMContentLoaded', () => {
-             lucide.createIcons();
-             showLoading(true);
-             if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY" || GOOGLE_MAPS_API_KEY === "YOUR_GOOGLE_MAPS_API_KEY") {
-                document.getElementById('api-key-warning').classList.remove('hide');
+            lucide.createIcons();
+            showLoading(true);
+
+            // 全域安全網：攔截未處理錯誤，避免 Loading 遮罩卡住
+            if (!window.__globalErrorHandlerBound) {
+                window.__globalErrorHandlerBound = true;
+                window.addEventListener('error', (e) => {
+                    try { showLoading(false); } catch (_) {}
+                    try { showToast('載入遇到錯誤，請稍後重試', true); } catch (_) {}
+                    console.error('Unhandled error:', e?.error || e);
+                });
+                window.addEventListener('unhandledrejection', (e) => {
+                    try { showLoading(false); } catch (_) {}
+                    try { showToast('載入遇到錯誤，請稍後重試', true); } catch (_) {}
+                    console.error('Unhandled rejection:', e?.reason || e);
+                });
+            }
+
+            if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY" || GOOGLE_MAPS_API_KEY === "YOUR_GOOGLE_MAPS_API_KEY") {
+                const warnEl = document.getElementById('api-key-warning');
+                warnEl && warnEl.classList.remove('hide');
                 showLoading(false);
-                console.error("API Keys are not configured. Please edit index.html"); 
-            } else {
+                console.error("API Keys are not configured. Please edit index.html");
+                return;
+            }
+
+            try {
                 initializeAppLogic();
+                // 安全逾時：若 12 秒內未初始化 auth，關閉遮罩並提示
+                setTimeout(() => {
+                    const isInitialized = !!(window.__auth) && (typeof window.__auth?.currentUser !== 'undefined');
+                    const loadingEl = document.getElementById('loading-screen');
+                    const isVisible = loadingEl && !loadingEl.classList.contains('hide');
+                    if (!isInitialized && isVisible) {
+                        showLoading(false);
+                        try { showToast('初始化逾時，請檢查網路或重新載入', true); } catch (_) {}
+                    }
+                }, 12000);
+            } catch (err) {
+                console.error('initializeAppLogic 失敗', err);
+                showLoading(false);
+                try { showToast('初始化失敗，請重新載入或檢查設定', true); } catch (_) {}
             }
         });
     </script>
