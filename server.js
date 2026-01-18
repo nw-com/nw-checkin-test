@@ -1,6 +1,29 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const admin = require('firebase-admin');
+
+let serviceAccount = null;
+try {
+  serviceAccount = require('./serviceAccountKey.json');
+} catch (_) {
+  serviceAccount = null;
+}
+
+function ensureAdminInitialized() {
+  if (admin.apps.length) return;
+  const options = {};
+  if (serviceAccount) {
+    console.log('Using serviceAccount for Firebase Admin, project:', serviceAccount.project_id);
+    options.credential = admin.credential.cert(serviceAccount);
+    if (serviceAccount.project_id) options.projectId = serviceAccount.project_id;
+  } else {
+    console.log('Using applicationDefault credentials for Firebase Admin');
+    options.credential = admin.credential.applicationDefault();
+    options.projectId = 'nw-checkin-all';
+  }
+  admin.initializeApp(options);
+}
 
 function sendRedirect(res, targetUrl) {
   res.writeHead(302, {
@@ -15,6 +38,51 @@ function sendRedirect(res, targetUrl) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (req.method === 'POST' && url.pathname === '/api/reset-password-default') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 1e6) req.connection.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const parsed = body ? JSON.parse(body) : {};
+        const email = (parsed.email || '').toString().trim();
+        if (!email) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '缺少 email' }));
+          return;
+        }
+        try {
+          ensureAdminInitialized();
+        } catch (initError) {
+          console.error('初始化 Firebase Admin 失敗:', initError);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '伺服器尚未設定管理憑證，無法重設密碼。' }));
+          return;
+        }
+        try {
+          const userRecord = await admin.auth().getUserByEmail(email);
+          await admin.auth().updateUser(userRecord.uid, { password: '123456' });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } catch (err) {
+          console.error('重設密碼失敗:', err);
+          const msg = err && err.code === 'auth/user-not-found'
+            ? '找不到對應的帳號。'
+            : '重設密碼失敗，請稍後再試。';
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: msg }));
+        }
+      } catch (err) {
+        console.error('解析請求失敗:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: '無效的請求格式' }));
+      }
+    });
+    return;
+  }
 
   // Pretty URL rewrites
   // /community -> /index.html?mode=community
@@ -33,10 +101,12 @@ const server = http.createServer((req, res) => {
 
   let filePath = '.' + url.pathname + (url.search || '');
   if (url.pathname === '/' || url.pathname === '') {
-    filePath = './index.html' + (url.search || '');
+    return sendRedirect(res, '/index.html' + (url.search || ''));
   }
 
-  const extname = String(path.extname(filePath)).toLowerCase();
+  // Strip query for filesystem read and for extension detection
+  const cleanFilePath = filePath.split('?')[0];
+  const extname = String(path.extname(cleanFilePath)).toLowerCase();
   const mimeTypes = {
     '.html': 'text/html',
     '.js': 'text/javascript',
@@ -56,9 +126,6 @@ const server = http.createServer((req, res) => {
   };
 
   const contentType = mimeTypes[extname] || 'application/octet-stream';
-
-  // Strip query for filesystem read
-  const cleanFilePath = filePath.split('?')[0];
   fs.readFile(cleanFilePath, (error, content) => {
     if (error) {
       if (error.code === 'ENOENT') {

@@ -140,6 +140,27 @@
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen">
+<script>
+(function(){
+  var attempts = 0;
+  var timer = setInterval(function(){
+    var login = document.getElementById('login-page');
+    var app = document.getElementById('app-container');
+    var loading = document.getElementById('loading-screen');
+    var reset = document.getElementById('reset-password-page');
+    var resetVisible = reset && !reset.classList.contains('hide');
+    var loginVisible = login && !login.classList.contains('hide');
+    var appVisible = app && !app.classList.contains('hide');
+    if (resetVisible || loginVisible || appVisible) { clearInterval(timer); return; }
+    attempts++;
+    if (attempts >= 15) {
+      if (loading) loading.classList.add('hide');
+      if (login) login.classList.remove('hide');
+      clearInterval(timer);
+    }
+  }, 200);
+})();
+</script>
 
     <!-- API Key Warning -->
     <div id="api-key-warning" class="hide fixed inset-0 bg-red-100 z-[9999] p-8 text-red-800 flex flex-col items-center justify-center text-center">
@@ -1532,11 +1553,10 @@
                         const loginPageNow = document.getElementById('login-page');
                         const appContainerNow = document.getElementById('app-container');
                         const resetPasswordPageNow = document.getElementById('reset-password-page');
-                        // 先顯示主容器並立即關閉載入遮罩，優化首屏切換
                         loginPageNow?.classList.add('hide');
                         resetPasswordPageNow?.classList.add('hide');
                         appContainerNow?.classList.remove('hide');
-                        showLoading(false);
+                        showLoading(true);
                     } catch (_) {}
                     state.forcedLogoutInProgress = false;
                     state.currentUser = user;
@@ -1592,12 +1612,10 @@
 
             // --- UI Initialization and Navigation ---
             function initializeAppUI() {
-                // 非阻塞：稍後載入非必要資源，避免阻塞首屏
+                loadGoogleMapsScript();
                 updateHeaderAvatar();
-                const idle = window.requestIdleCallback || (fn => setTimeout(fn, 0));
-                idle(() => { try { loadGoogleMapsScript(); } catch (_) {} });
-                // 準備社區資料與標頭顯示（延後執行，避免阻塞）
-                idle(() => { try { ensureCommunitiesCache().then(() => { computeAvailableCommunities(); updateHeaderCommunity(); }); } catch (_) {} });
+                // 準備社區資料與標頭顯示
+                try { ensureCommunitiesCache().then(() => { computeAvailableCommunities(); updateHeaderCommunity(); }); } catch (_) {}
                 // 加入頁首 LOGO/標題的點擊事件，直接回導覽頁（依社區）
                 try {
                     const headerLogo = document.getElementById('header-logo');
@@ -2301,7 +2319,7 @@
                             // 目前使用者與角色（非管理端僅針對本人計算圓點）
                             const currentUser = state.currentUser || window.__auth?.currentUser || null;
                             const currentRole = (state.currentUserData?.role || '').trim();
-                            // 改為所有角色皆採社區整體聚合，不僅限管理角色
+                            const isManagerRole = ['admin','hr','manager','junior_manager'].includes(currentRole);
 
                             const parseHM = (iso, hm) => {
                                 if (!iso || !hm) return null;
@@ -2324,8 +2342,7 @@
                                     const code = (u.serviceCommunityCode || '').trim();
                                     return code && communitiesByCode[code] === c.id;
                                 });
-                                // 不區分角色，統一以該社區所有成員為基準計算圓點
-                                usersByCommunityId[c.id] = allMembers;
+                                usersByCommunityId[c.id] = isManagerRole ? allMembers : allMembers.filter(u => u.id === (currentUser?.uid || ''));
                             }
 
                             // 今日班表一次抓取（postSchedules，dateIso=今日）
@@ -2390,14 +2407,16 @@
                                     }
                                 }
 
-                                // 待審假單：以「社區成員是否有 pending」為準（假單通常無社區欄位）
+                                // 待審假單（僅計入屬於當前社區的申請；舊資料回退以名稱包含）
                                 for (const u of communityUsers) {
-                                    if ((pendingLeavesByUserId[u.id] || []).length > 0) { hasPendingLeave = true; break; }
+                                    const leavesForUser = (pendingLeavesByUserId[u.id] || []).filter(l => recordMatchesCommunityStrict(l, c) || recordMatchesCommunityByName(l, c));
+                                    if (leavesForUser.length > 0) { hasPendingLeave = true; break; }
                                 }
 
-                                // 待同意打卡修改申請：以「社區成員是否有 pending」為準（部分申請可能缺社區欄位）
+                                // 待同意打卡修改申請（僅計入當前社區；舊資料回退以名稱包含）
                                 for (const u of communityUsers) {
-                                    if ((pendingRetrosByUserId[u.id] || []).length > 0) { hasPendingRetro = true; break; }
+                                    const retrosForUser = (pendingRetrosByUserId[u.id] || []).filter(r => recordMatchesCommunityStrict(r, c) || recordMatchesCommunityByName(r, c));
+                                    if (retrosForUser.length > 0) { hasPendingRetro = true; break; }
                                 }
 
                                 // 巡邏逾時未開始邏輯已移除
@@ -2430,7 +2449,12 @@
                             try {
                                 const nowZ = new Date();
                                 const tsNowZ = Timestamp?.fromDate ? Timestamp.fromDate(nowZ) : nowZ;
-                                const qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ));
+                                let qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ));
+                                try {
+                                    if (!isManagerRole && (currentUser?.uid)) {
+                                        qA = query(collection(db, 'anomalies'), where('expiresAt','>=', tsNowZ), where('userId','==', currentUser.uid));
+                                    }
+                                } catch (_) { /* 在某些 Firestore 版本不可組合 where 時退回全部 */ }
                                 const aSnap = await getDocs(qA);
                                 aSnap.forEach(d => {
                                     const data = d.data() || {};
@@ -3515,10 +3539,57 @@
                     }
                 } catch (e) { console.warn('updateDashboardStatus 初始執行失敗', e); }
                 const timeEl = document.getElementById('current-time');
-                const timerInterval = setInterval(() => {
-                    if(timeEl){ timeEl.textContent = new Date().toLocaleString('zh-TW', { dateStyle: 'long', timeStyle: 'medium', hour12: false }); }
-                }, 1000);
-                state.activeListeners.push(() => clearInterval(timerInterval));
+                if (timeEl) {
+                    const renderDate = (dt) => {
+                        if (!dt) return;
+                        try {
+                            timeEl.textContent = dt.toLocaleString('zh-TW', {
+                                timeZone: 'Asia/Taipei',
+                                year: 'numeric',
+                                month: 'numeric',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false
+                            });
+                        } catch (_) {
+                            timeEl.textContent = dt.toLocaleString('zh-TW', { dateStyle: 'long', timeStyle: 'medium', hour12: false });
+                        }
+                    };
+
+                    const updateTimeFromServer = () => {
+                        let serverDate = null;
+                        if (typeof window.getCurrentServerDate === 'function') {
+                            serverDate = window.getCurrentServerDate();
+                        }
+                        if (serverDate) {
+                            renderDate(serverDate);
+                            return;
+                        }
+                        if (typeof window.ensureServerTimeSync === 'function') {
+                            try {
+                                const r = window.ensureServerTimeSync();
+                                if (r && typeof r.then === 'function') {
+                                    r.then(() => {
+                                        if (typeof window.getCurrentServerDate === 'function') {
+                                            const d = window.getCurrentServerDate();
+                                            if (d) {
+                                                renderDate(d);
+                                            }
+                                        }
+                                    }).catch(() => {});
+                                }
+                            } catch (_) {}
+                        }
+                    };
+
+                    updateTimeFromServer();
+                    const timerInterval = setInterval(updateTimeFromServer, 1000);
+                    state.activeListeners.push(() => {
+                        clearInterval(timerInterval);
+                    });
+                }
                 
                 // 管理階層：渲染異常通知（社區列表顯示已移除）
                 if (isManagerial) {
@@ -13450,6 +13521,7 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                             <div class="flex items-center justify-between">
                                 <h3 class="font-bold text-lg">帳號列表</h3>
                                 <div class="flex items-center gap-2">
+                                    ${ (['admin','hr'].includes(state.currentUserData?.role || '')) ? `<button id="export-users-btn" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700">匯出Excel</button>` : '' }
                                     ${backfillBtnHtml}
                                     ${ (state.currentPage === 'navigation' && (state.currentUserData?.role === 'admin')) ? `<button id="add-user-btn" class="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700">新增帳號</button>` : '' }
                                 </div>
@@ -13505,6 +13577,80 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                 const addBtn = document.getElementById('add-user-btn');
                 if (addBtn) {
                     addBtn.addEventListener('click', () => openUserModal());
+                }
+                const exportBtn = document.getElementById('export-users-btn');
+                if (exportBtn) {
+                    exportBtn.addEventListener('click', async () => {
+                        try {
+                            showLoading(true);
+                            const users = Array.isArray(state.users) ? state.users.slice() : [];
+                            if (!users.length) {
+                                showToast('目前沒有帳號可匯出', true);
+                                return;
+                            }
+                            const byId = state.communitiesById || {};
+                            const idToCode = {};
+                            Object.values(byId || {}).forEach(c => { if (c && c.id) idToCode[c.id] = c.code || ''; });
+                            const headers = ['使用者ID','姓名','電子郵件','手機','角色','職稱','服務社區代號','服務社區ID列表','在職狀態'];
+                            const esc = (v) => {
+                                const s = (v === null || v === undefined) ? '' : String(v);
+                                const t = s.replace(/"/g, '""');
+                                return `"${t}"`;
+                            };
+                            const mapRole = (u) => {
+                                const jt = ((u?.jobTitle || u?.applicationTitle || '').trim());
+                                return jt && jt.length ? jt : (u?.role || '');
+                            };
+                            const buildCodes = (u) => {
+                                const arr = Array.isArray(u.serviceCommunityCodes) ? u.serviceCommunityCodes.slice() : [];
+                                const sc = u.serviceCommunityCode || '';
+                                if (sc && !arr.includes(sc)) arr.push(sc);
+                                const ids = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
+                                ids.forEach(id => { const code = idToCode[id]; if (code && !arr.includes(code)) arr.push(code); });
+                                return arr.filter(Boolean).join(';');
+                            };
+                            const buildIds = (u) => {
+                                const ids = Array.isArray(u.serviceCommunities) ? u.serviceCommunities : [];
+                                return ids.filter(Boolean).join(';');
+                            };
+                            const rows = [headers.join(',')];
+                            users.forEach(u => {
+                                const row = [
+                                    esc(u.id || ''),
+                                    esc(u.name || ''),
+                                    esc(u.email || ''),
+                                    esc(u.phone || ''),
+                                    esc(u.role || ''),
+                                    esc(u.jobTitle || u.applicationTitle || ''),
+                                    esc(buildCodes(u)),
+                                    esc(buildIds(u)),
+                                    esc(u.employmentStatus || '')
+                                ].join(',');
+                                rows.push(row);
+                            });
+                            const bom = '\ufeff';
+                            const csv = bom + rows.join('\r\n');
+                            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            const ts = new Date();
+                            const y = ts.getFullYear();
+                            const m = String(ts.getMonth()+1).padStart(2,'0');
+                            const d = String(ts.getDate()).padStart(2,'0');
+                            a.href = url;
+                            a.download = `users_all_${y}${m}${d}.csv`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                            showToast('已匯出所有帳號為 CSV（Excel 可開啟）');
+                        } catch (e) {
+                            console.error('匯出帳號失敗', e);
+                            showToast('匯出失敗', true);
+                        } finally {
+                            showLoading(false);
+                        }
+                    });
                 }
                 const backfillBtn = document.getElementById('backfill-loginindex-btn');
                 if (backfillBtn) {
@@ -15926,9 +16072,9 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                         </div>
                                     ` : `
                                         <button type="button" id="send-reset-email-btn" class="w-full bg-gray-200 text-gray-700 py-2 rounded-md hover:bg-gray-300">
-                                            寄送重設密碼信到 ${user.email}
+                                            將 ${user.email} 的密碼重設為預設值 123456
                                         </button>
-                                        <p class="mt-2 text-xs text-gray-500">無法直接變更其他用戶密碼，請透過 Email 重設。</p>
+                                        <p class="mt-2 text-xs text-gray-500">此操作會直接將該使用者登入密碼改為 123456，請謹慎使用。</p>
                                     `}
                                 </div>
                                 ` : ''}
@@ -16240,23 +16386,43 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                     }
                 });
 
-                // 寄送重設密碼信（編輯他人時）
                 const sendResetBtn = document.getElementById('send-reset-email-btn');
                 if (sendResetBtn) {
                     sendResetBtn.addEventListener('click', async () => {
+                        const confirmed = window.confirm(`確定要將 ${user.email} 的密碼重設為預設值 123456？`);
+                        if (!confirmed) return;
                         try {
                             showLoading(true);
-            {
-                const actionCodeSettings = {
-                    url: `${window.location.origin}${window.location.pathname}?mode=resetPassword`,
-                    handleCodeInApp: true
-                };
-                await sendPasswordResetEmail(auth, user.email, actionCodeSettings);
-            }
-                            showToast('已寄出重設密碼通知信');
+                            const resp = await fetch('/api/reset-password-default', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email: user.email })
+                            });
+                            let data = null;
+                            try {
+                                data = await resp.json();
+                            } catch (_) {}
+                            if (resp.ok && data && data.success === true) {
+                                showToast('已將密碼重設為預設值 123456');
+                                return;
+                            }
+
+                            const fallbackConfirm = window.confirm('伺服器無法直接重設密碼，是否改為寄送重設密碼信？');
+                            if (!fallbackConfirm) {
+                                const msg = data && data.error ? data.error : '重設密碼失敗，請稍後再試。';
+                                showToast(msg, true);
+                                return;
+                            }
+
+                            const actionCodeSettings = {
+                                url: `${window.location.origin}${window.location.pathname}?mode=resetPassword`,
+                                handleCodeInApp: true
+                            };
+                            await sendPasswordResetEmail(auth, user.email, actionCodeSettings);
+                            showToast('伺服器無法直接重設，已改為寄送重設密碼信');
                         } catch (err) {
-                            console.error('寄送重設密碼信失敗', err);
-                            showToast('寄送失敗：請稍後再試', true);
+                            console.error('重設密碼失敗', err);
+                            showToast('重設密碼失敗，請稍後再試。', true);
                         } finally {
                             showLoading(false);
                         }
@@ -16385,6 +16551,30 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                                     <h4 class="font-semibold mb-2">請假申請</h4>
                                     <div id="future-leaves" class="space-y-2"></div>
                                 </div>
+
+                                <!-- 自行修改登入密碼 -->
+                                <div class="border-t pt-4">
+                                    <h4 class="font-semibold mb-2">修改登入密碼</h4>
+                                    <form id="change-password-form" class="space-y-3">
+                                        <div>
+                                            <label for="cp-current" class="block text-sm font-medium text-gray-700 mb-1">目前密碼</label>
+                                            <input type="password" id="cp-current" class="w-full px-3 py-2 border rounded-md" autocomplete="current-password" required>
+                                        </div>
+                                        <div>
+                                            <label for="cp-new" class="block text-sm font-medium text-gray-700 mb-1">新密碼（至少 6 碼）</label>
+                                            <input type="password" id="cp-new" class="w-full px-3 py-2 border rounded-md" autocomplete="new-password" required>
+                                        </div>
+                                        <div>
+                                            <label for="cp-confirm" class="block text-sm font-medium text-gray-700 mb-1">再次確認新密碼</label>
+                                            <input type="password" id="cp-confirm" class="w-full px-3 py-2 border rounded-md" autocomplete="new-password" required>
+                                        </div>
+                                        <p id="change-password-error" class="text-xs text-red-600"></p>
+                                        <button type="submit" class="w-full bg-red-600 text-white py-2 rounded-md hover:bg-red-700 text-sm">
+                                            儲存新密碼
+                                        </button>
+                                        <p class="mt-1 text-xs text-gray-500">只會修改此系統的登入密碼，下次登入請使用新密碼。</p>
+                                    </form>
+                                </div>
                             </div>
 
                             <div class="p-4 border-t">
@@ -16421,6 +16611,58 @@ const roleBorderClass = roleColorMap[titleKey] || null;
                         showLoading(false);
                     }
                 });
+
+                // 自行修改登入密碼
+                if (changePasswordForm) {
+                    changePasswordForm.addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        const errorEl = document.getElementById('change-password-error');
+                        if (errorEl) errorEl.textContent = '';
+                        try {
+                            const currentInput = document.getElementById('cp-current');
+                            const newInput = document.getElementById('cp-new');
+                            const confirmInput = document.getElementById('cp-confirm');
+                            const currentVal = currentInput?.value || '';
+                            const newVal = newInput?.value || '';
+                            const confirmVal = confirmInput?.value || '';
+                            if (!currentVal || !newVal || !confirmVal) {
+                                if (errorEl) errorEl.textContent = '請完整填寫所有欄位。';
+                                return;
+                            }
+                            if (newVal.length < 6) {
+                                if (errorEl) errorEl.textContent = '新密碼至少需要 6 個字元。';
+                                return;
+                            }
+                            if (newVal !== confirmVal) {
+                                if (errorEl) errorEl.textContent = '兩次輸入的新密碼不一致。';
+                                return;
+                            }
+                            const user = auth.currentUser;
+                            if (!user || !user.email) {
+                                if (errorEl) errorEl.textContent = '目前尚未登入，無法修改密碼。';
+                                return;
+                            }
+                            showLoading(true);
+                            const cred = EmailAuthProvider.credential(user.email, currentVal);
+                            await reauthenticateWithCredential(user, cred);
+                            await updatePassword(user, newVal);
+                            if (currentInput) currentInput.value = '';
+                            if (newInput) newInput.value = '';
+                            if (confirmInput) confirmInput.value = '';
+                            showToast('密碼已更新，下次登入請使用新密碼');
+                        } catch (err) {
+                            console.error('修改登入密碼失敗:', err);
+                            const msg = err && err.code === 'auth/wrong-password'
+                                ? '目前密碼輸入錯誤。'
+                                : err && err.code === 'auth/too-many-requests'
+                                    ? '嘗試次數過多，請稍後再試。'
+                                    : '修改密碼失敗，請稍後再試。';
+                            if (errorEl) errorEl.textContent = msg;
+                        } finally {
+                            showLoading(false);
+                        }
+                    });
+                }
 
                 // 隱私權政策開窗
                 if (privacyLink) {
@@ -17829,48 +18071,14 @@ const roleBorderClass = roleColorMap[titleKey] || null;
 
         // --- Initial Load ---
         document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-            showLoading(true);
-
-            // 全域安全網：攔截未處理錯誤，避免 Loading 遮罩卡住
-            if (!window.__globalErrorHandlerBound) {
-                window.__globalErrorHandlerBound = true;
-                window.addEventListener('error', (e) => {
-                    try { showLoading(false); } catch (_) {}
-                    try { showToast('載入遇到錯誤，請稍後重試', true); } catch (_) {}
-                    console.error('Unhandled error:', e?.error || e);
-                });
-                window.addEventListener('unhandledrejection', (e) => {
-                    try { showLoading(false); } catch (_) {}
-                    try { showToast('載入遇到錯誤，請稍後重試', true); } catch (_) {}
-                    console.error('Unhandled rejection:', e?.reason || e);
-                });
-            }
-
-            if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY" || GOOGLE_MAPS_API_KEY === "YOUR_GOOGLE_MAPS_API_KEY") {
-                const warnEl = document.getElementById('api-key-warning');
-                warnEl && warnEl.classList.remove('hide');
+             lucide.createIcons();
+             showLoading(true);
+             if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY" || GOOGLE_MAPS_API_KEY === "YOUR_GOOGLE_MAPS_API_KEY") {
+                document.getElementById('api-key-warning').classList.remove('hide');
                 showLoading(false);
-                console.error("API Keys are not configured. Please edit index.html");
-                return;
-            }
-
-            try {
+                console.error("API Keys are not configured. Please edit index.html"); 
+            } else {
                 initializeAppLogic();
-                // 安全逾時：若 12 秒內未初始化 auth，關閉遮罩並提示
-                setTimeout(() => {
-                    const isInitialized = !!(window.__auth) && (typeof window.__auth?.currentUser !== 'undefined');
-                    const loadingEl = document.getElementById('loading-screen');
-                    const isVisible = loadingEl && !loadingEl.classList.contains('hide');
-                    if (!isInitialized && isVisible) {
-                        showLoading(false);
-                        try { showToast('初始化逾時，請檢查網路或重新載入', true); } catch (_) {}
-                    }
-                }, 12000);
-            } catch (err) {
-                console.error('initializeAppLogic 失敗', err);
-                showLoading(false);
-                try { showToast('初始化失敗，請重新載入或檢查設定', true); } catch (_) {}
             }
         });
     </script>
